@@ -39,4 +39,9 @@
 @import "../CPCoreDataPersistentStores/WOStore/CPWOStore.j"
 @import "../CPCoreDataPersistentStores/WOStore/CPWOStoreType.j"
 
+//HTTP incremental store (OrdersAPI cdFetch / cdSave)
+@import "../CPCoreDataPersistentStores/HTTPStore/CPHTTPStoreType.j"
+@import "../CPCoreDataPersistentStores/HTTPStore/CPHTTPPredicateEncoder.j"
+@import "../CPCoreDataPersistentStores/HTTPStore/CPHTTPStore.j"
+
 

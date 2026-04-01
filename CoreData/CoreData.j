@@ -44,3 +44,8 @@
 @import "CPWOStore.j"
 @import "CPWOStoreType.j"
 
+//HTTP incremental store (OrdersAPI cdFetch / cdSave)
+@import "CPHTTPStoreType.j"
+@import "CPHTTPPredicateEncoder.j"
+@import "CPHTTPStore.j"
+

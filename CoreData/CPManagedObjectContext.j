@@ -117,9 +117,17 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     return nil;
 }
 
-// @TODO update methods to use _executeStoreFetchRequest
 - (CPManagedObject) updateObjectWithID:(CPManagedObjectID) aObjectID mergeChanges:(BOOL) mergeChanges
 {
+    // Try the local registry first
+    var existing = [self objectRegisteredForID:aObjectID];
+    if (existing !== nil)
+        return existing;
+
+    // Fire a fault fetch via the store if the object ID has a global ID
+    if ([aObjectID validatedGlobalID])
+        return [self _fetchObjectWithID:aObjectID];
+
     return nil;
 }
 
