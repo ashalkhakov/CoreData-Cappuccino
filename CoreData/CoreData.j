@@ -44,3 +44,7 @@
 @import "CPWOStore.j"
 @import "CPWOStoreType.j"
 
+//OrderFlow HTTP incremental store
+@import "CPOrderFlowStore.j"
+@import "CPOrderFlowStoreType.j"
+
