@@ -13,8 +13,10 @@ var coordinator = [[CPPersistentStoreCoordinator alloc]
                         initWithManagedObjectModel:myModel
                                          storeType:[CPHTTPStoreType class]
                                 storeConfiguration:[CPDictionary dictionaryWithObjectsAndKeys:
-                                    @"http://myserver/wa/OrdersAPI", CPHTTPStoreBaseURL,
-                                    1,                               CPHTTPStoreDefaultIncludeDepth,
+                                    // Full path to the OrdersAPI root (no trailing slash)
+                                    @"http://myserver/WebObjects/App.woa/0/wa/OrdersAPI",
+                                                         CPHTTPStoreBaseURL,
+                                    1,               CPHTTPStoreDefaultIncludeDepth,
                                     nil]];
 var context = [[CPManagedObjectContext alloc]
                     initWithPersistentStoreCoordinator:coordinator];
@@ -75,7 +77,8 @@ var req = [[CPFetchRequest alloc] init];
     @"key":   @"fullName",
     @"value": @"I"
 }];
-[req setSortDescriptors:[@{...}]];
+var sd = [[CPSortDescriptor alloc] initWithKey:@"fullName" ascending:YES];
+[req setSortDescriptors:[sd]];
 [req setFetchLimit:10];
 [req setFetchOffset:0];
 

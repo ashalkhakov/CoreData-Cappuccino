@@ -289,9 +289,15 @@
     if ([idsArray count] == 0)
         return [CPSet new];
 
+    // Use the entity from the first valid object ID for the required "entity" field.
+    // The ids array itself carries per-object entity information.
+    var firstID = [[objectIDs objectEnumerator] nextObject];
+    var entityName = (firstID !== nil && [firstID entity] !== nil)
+                        ? [[firstID entity] name]
+                        : @"";
     var body = [CPDictionary dictionaryWithObjectsAndKeys:
-                    [[[[objectIDs objectEnumerator] nextObject] entity] name], @"entity",
-                    idsArray, @"ids", nil];
+                    entityName, @"entity",
+                    idsArray,   @"ids", nil];
 
     var responseData = [self _postJSON:body toURL:[self _cdFetchURL]];
     if (responseData === nil)
@@ -764,7 +770,13 @@
         if ([relDesc isToMany])
         {
             var idSet = [[CPMutableSet alloc] init],
-                arr   = Array.isArray(relValue) ? relValue : [relValue];
+                arr;
+            if (Array.isArray(relValue))
+                arr = relValue;
+            else if (relValue !== null && typeof relValue === "object" && !Array.isArray(relValue))
+                arr = [relValue]; // single server-ID object wrapped as array
+            else
+                arr = [];
             for (var ai = 0; ai < arr.length; ai++)
             {
                 var relID = [self _objectIDForServerID:arr[ai]
@@ -901,14 +913,19 @@
             if ([relDesc isToMany])
             {
                 var refs    = [[CPMutableArray alloc] init],
-                    relEnum = [propValue isKindOfClass:[CPSet class]]
-                                ? [propValue objectEnumerator]
-                                : [[propValue allObjects] objectEnumerator],
+                    relEnum = nil,
                     relItem;
-                while ((relItem = [relEnum nextObject]))
+                if ([propValue isKindOfClass:[CPSet class]] || [propValue isKindOfClass:[CPArray class]])
+                    relEnum = [propValue objectEnumerator];
+                else if (propValue !== nil)
+                    CPLog.warn(@"CPHTTPStore: unexpected to-many value type for '" + propName + @"'; skipping");
+                if (relEnum !== nil)
                 {
-                    if ([relItem isKindOfClass:[CPManagedObjectID class]])
-                        [refs addObject:[self _refForObjectID:relItem]];
+                    while ((relItem = [relEnum nextObject]))
+                    {
+                        if ([relItem isKindOfClass:[CPManagedObjectID class]])
+                            [refs addObject:[self _refForObjectID:relItem]];
+                    }
                 }
                 if ([refs count] > 0)
                     [relDict setObject:refs forKey:propName];
