@@ -44,3 +44,7 @@
 @import "CPWOStore.j"
 @import "CPWOStoreType.j"
 
+//HTTP incremental store
+@import "CPHTTPIncrementalStoreType.j"
+@import "CPHTTPIncrementalStore.j"
+

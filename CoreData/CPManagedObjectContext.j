@@ -114,13 +114,14 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 // @TODO update methods to use _executeStoreFetchRequest
 - (CPManagedObject) updateObject:(CPManagedObject) aObject mergeChanges:(BOOL) mergeChanges
 {
-    return nil;
+    if (aObject == nil)
+        return nil;
+    return [self _fetchObjectWithID:[aObject objectID]];
 }
 
-// @TODO update methods to use _executeStoreFetchRequest
 - (CPManagedObject) updateObjectWithID:(CPManagedObjectID) aObjectID mergeChanges:(BOOL) mergeChanges
 {
-    return nil;
+    return [self _fetchObjectWithID:aObjectID];
 }
 
 // @TODO fetchLimit is missing
@@ -542,6 +543,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
             var error = nil;
             var resultSet = [[self store] fetchObjectsWithID:setWithObjIDs
                                              fetchProperties:newPropertiesDict
+                                      inManagedObjectContext:self
                                                        error:error];
             if(resultSet != nil && [resultSet count] > 0 && error == nil)
             {

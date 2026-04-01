@@ -109,4 +109,70 @@ Currently accessing a user/password protected webdav is not supported, If you kn
 ### CPWOStore ###
 *!!! Currently not up-to-date with the latest implementation, I work on a update for both client and server side !!!*
 
+### CPHTTPIncrementalStore ###
+An incremental HTTP store that talks to the **OrderFlow OrdersAPI** backend via two
+JSON endpoints: `/cdFetch` (read) and `/cdSave` (write).  Unlike the bulk stores
+(WebDAV, HTML5) this store never loads all objects at initialisation time; data is
+fetched on demand as the application executes fetch requests or traverses
+relationships.
+
+**Configuration Dictionary:**
+
+1. *Key:* `CPHTTPIncrementalStoreConfigurationKeyBaseURL`
+   *Object:* Base URL of the OrdersAPI, e.g. `@"http://localhost:8080/api/"`.
+   A trailing slash is added automatically if missing.
+
+**Setting up the store:**
+
+	- (id)initWithContext
+	{
+	    if (self = [super init])
+	    {
+	        var model = [CPManagedObjectModel modelWithModelNamed:@"Orders.xcdatamodel" bundle:nil];
+	        var config = [[CPMutableDictionary alloc] init];
+	        [config setObject:@"http://localhost:8080/api/"
+	                   forKey:CPHTTPIncrementalStoreConfigurationKeyBaseURL];
+
+	        var coordinator = [[CPPersistentStoreCoordinator alloc]
+	                               initWithManagedObjectModel:model
+	                                                storeType:[CPHTTPIncrementalStoreType class]
+	                                        storeConfiguration:config];
+
+	        _context = [[CPManagedObjectContext alloc]
+	                        initWithPersistantStoreCoordinator:coordinator];
+	    }
+	    return self;
+	}
+
+**Fetching objects:**
+
+Fetch requests work just like other stores.  To pass a server-side predicate use
+a `CPDictionary` containing the server AST directly:
+
+	var request = [[CPFetchRequest alloc] init];
+	[request setEntity:[[_context model] entityWithName:@"Customer"]];
+	[request setPredicate:[CPDictionary dictionaryWithJSObject:
+	    {op:"beginswith", key:"fullName", value:"I"} recursively:YES]];
+	[request setFetchLimit:10];
+
+	var results = [_context executeFetchRequest:request error:nil];
+
+**Saving objects:**
+
+Use the standard `saveChanges:` call on the context.  Newly inserted objects
+receive their permanent server IDs via the `idMap` in the `/cdSave` response.
+
+	[_context saveChanges:nil];
+
+**Backend contract (summary):**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/cdFetch` | POST | Fetch objects (graph or IDs-only mode) |
+| `/cdSave`  | POST | Insert / update / delete objects |
+
+Global IDs stored in `CPManagedObjectID.globalID` use the format
+`"EntityName|pkKey1=jsonVal1;pkKey2=jsonVal2;"` (pk keys sorted alphabetically),
+which is stable and reversible.
+
 ## 2. Write your own Persistant Store ##
