@@ -9,6 +9,10 @@
 @import "CPManagedObjectContext.j"
 @import "CPManagedObjectID.j"
 
+@class CPRelationshipDescription;
+@class CPEntityDescription;
+@class CPManagedObjectContext;
+
 /*
 **** HEADER ****
 @private
@@ -55,7 +59,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 {
     if (self = [super init])
     {
-        _propertiesData = [[CPMutableDictionary alloc] init];
+        _data = [[CPMutableDictionary alloc] init];
         _changedData = [[CPMutableDictionary alloc] init];
         _isUpdated = NO;
         _isDeleted = NO;
@@ -135,7 +139,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
             var resultSet  = [[CPSet alloc] init];
             var valuesEnumerator = [values objectEnumerator];
             var aValue;
-            var i = 0;
+
             while((aValue = [valuesEnumerator nextObject]))
             {
                 if(aValue != nil)
@@ -386,7 +390,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 - (CPArray)toManyRelationshipsKey
 {
     var result = [[CPMutableArray alloc] init];
-    var relationshipDict = [entity relationshipsByName];
+    var relationshipDict = [_entity relationshipsByName];
     var allKeys = [relationshipDict allKeys];
     var i = 0;
 
@@ -405,7 +409,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 - (CPArray)toOneRelationshipsKey
 {
     var result = [[CPMutableArray alloc] init];
-    var relationshipDict = [entity relationshipsByName];
+    var relationshipDict = [_entity relationshipsByName];
     var allKeys = [relationshipDict allKeys];
     var i = 0;
 
@@ -727,7 +731,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 */
 - (void)_setChangedObject:(id) aObject forKey:(CPString) aKey
 {
-    var transformed = [[self entity] reverseTransformValue:aObject forProperty:aKey];
+    var transformed = [_entity reverseTransformValue:aObject forProperty:aKey];
     [_changedData setObject:transformed forKey:aKey];
     [_data setObject:transformed forKey:aKey];
 }
@@ -760,7 +764,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
     return [[_data allKeys] containsObject: aKey];
 }
 
-- (void)_setData:(CPDictionary) aDictionary
+- (void)_setData:(CPMutableDictionary) aDictionary
 {
     _data = aDictionary;
     var e = [[_entity properties] objectEnumerator];
@@ -773,7 +777,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
     }
 }
 
-- (void)_setChangedData:(CPDictionary) aDictionary
+- (void)_setChangedData:(CPMutableDictionary) aDictionary
 {
     _changedData = aDictionary;
 }
@@ -839,7 +843,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 - (Class)relationshipDestinationClassType:(CPString) key
 {
     var result = nil;
-    var att = [[_entity relationshipsByName] objectForKey:aKey];
+    var att = [[_entity relationshipsByName] objectForKey:key];
 
     if(att != nil)
     {
@@ -850,9 +854,9 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 }
 
 
-- (CPRelationshipDescription)relationshipWithDestination:(CPEntityDescription)aEntity
+- (CPRelationshipDescription)relationshipWithDestination:(CPEntityDescription)entity
 {
-    var relationshipDict = [aEntity relationshipsByName];
+    var relationshipDict = [entity relationshipsByName];
     var allKeys = [relationshipDict allKeys];
     var i = 0;
 

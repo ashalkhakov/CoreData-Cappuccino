@@ -25,7 +25,7 @@
 // if object is CPNull return nil
 - (id)objectForKey:(CPString)aKey
 {
-	var object = _buckets[aKey];
+	var object = self._buckets[aKey];
 	return (object === undefined || object == CPNull) ? nil : object;
 }
 

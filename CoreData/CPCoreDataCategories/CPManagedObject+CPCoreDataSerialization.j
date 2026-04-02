@@ -5,6 +5,7 @@
 //
 
 @import <Foundation/Foundation.j>
+@import "CPManagedObject.j"
 
 //global keys for serialization formats
 CPCoreDataSerializationXMLFormat = "CPCoreDataSerializationXMLFormat";

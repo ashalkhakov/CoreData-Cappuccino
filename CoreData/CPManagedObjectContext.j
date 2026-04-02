@@ -9,6 +9,7 @@
 @import "CPManagedObjectID.j"
 @import "CPManagedObjectModel.j"
 @import "CPPersistentStore.j"
+@import "CPPersistentStoreCoordinator.j"
 
 /*
 
@@ -133,7 +134,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 
 // @TODO fetchLimit is missing
 - (CPArray) executeFetchRequest:(CPFetchRequest)aFetchRequest
-                          error:(CPError)anError
+                          error:(@ref)anError
 {
     var result = nil;
 
@@ -317,9 +318,9 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 
     TODO: better error handling
 
-    @param error should be nil or a CPReference, will receive a CPError object on error.
+    @param error should be nil or a @ref, will receive a CPError object on error.
 */
-- (BOOL)saveChanges:(CPError)error
+- (BOOL)saveChanges:(@ref)error
 {
     if (![self hasChanges])
     {
@@ -330,22 +331,22 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
                           saveObjectsUpdated:inserted:deleted:inManagedObjectContext:error:)]
        )
     {
-        var saveError = [CPReference new],
+        var saveError = nil,
             updatedObjects = [self updatedObjects],
             insertedObjects = [self insertedObjects],
             deletedObjects = [self deletedObjects];
         var modifiedObjects = [self _saveObjectsUpdated:updatedObjects
                                                inserted:insertedObjects
                                                 deleted:deletedObjects
-                                                  error:saveError];
-        if ([saveError isNil])
+                                                  error:@ref(saveError)];
+        if (saveError == nil)
         {
             result = [self reset];
         }
-        else if (error && [error isNil])
+        else if (error && @deref(error) == nil)
         {
             // return the error to the caller
-            [error setObject:[saveError object]];
+            @deref(error) = saveError;
         }
         [[CPNotificationCenter defaultCenter]
             postNotificationName: CPManagedObjectContextDidSaveNotification
@@ -371,7 +372,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     insert/update or delete.
 */
 - (BOOL)saveObject:(CPManagedObject)aObject
-             error:(CPError)error
+             error:(@ref)error
 {
     CPLog.debug(  "context:" + self
                 + " saveObject: reg " + [_registeredObjects count]
@@ -379,7 +380,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
                 + ", ins " + [_insertedObjectIDs count]
                 + ", del "  + [_deletedObjects count]);
     var result = NO,
-        saveError = [CPReference new],
+        saveError = nil,
         updatedObjects = [CPSet new],
         insertedObjects = [CPSet new],
         deletedObjects = [CPSet new],
@@ -396,8 +397,8 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     var modifiedObjects = [self _saveObjectsUpdated:updatedObjects
                                            inserted:insertedObjects
                                             deleted:deletedObjects
-                                              error:saveError];
-    if ([saveError isNil])
+                                              error:@ref(saveError)];
+    if (saveError == nil)
     {
         // update the state of the object in the context
         [_updatedObjectIDs removeObject:[aObject objectID]];
@@ -405,10 +406,10 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
         [_deletedObjects removeObject:[aObject objectID]];
         result = YES;
     }
-    else if (error && [error isNil])
+    else if (error && @deref(error) == nil)
     {
         // return the error to the caller
-        [error setObject:[saveError object]];
+        @deref(error) = saveError;
     }
     return result;
 }
@@ -417,16 +418,16 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 -(CPSet)_saveObjectsUpdated:(CPSet)updatedObjects
                    inserted:(CPSet)insertedObjects
                     deleted:(CPSet)deletedObjects
-                      error:(CPError)error
+                      error:(@ref)error
 {
-    var saveError = [CPReference new];
+    var saveError = nil;
     [self _validateUpdatedObject:updatedObjects
                  insertedObjects:insertedObjects];
     var resultSet = [[self store] saveObjectsUpdated:updatedObjects
                                             inserted:insertedObjects
                                              deleted:deletedObjects
                               inManagedObjectContext:self
-                                               error:saveError];
+                                               error:@ref(saveError)];
     if (resultSet && [resultSet count] > 0)
     {
         var objectsEnum = [resultSet objectEnumerator];
@@ -441,16 +442,16 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
             }
         }
     }
-    if (![saveError isNil] && error && [error isNil])
+    if (saveError != nil && error && @deref(error) == nil)
     {
         // return the error to the caller
-        [error setObject:[saveError object]];
+        @deref(error) = saveError;
     }
     return resultSet;
 }
 
-- (void) _validateUpdatedObject:({CPSet})updated
-                insertedObjects:({CPSet})inserted
+- (void) _validateUpdatedObject:(CPSet)updated
+                insertedObjects:(CPSet)inserted
 {
     var unionSet = [[CPMutableSet alloc] init];
     [unionSet unionSet:updated];
@@ -514,14 +515,14 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
         }
         if (localID || globalID)
         {
-            var e = [_registeredObjects objectEnumerator],
-                id,
-                object;
+            var e = [_registeredObjects objectEnumerator];
+            var oid = nil;
+            var object = nil;
             while (object = [e nextObject])
             {
-                id = [object objectID];
-                if (   (localID && [id isEqualToLocalID:aObjectID] == YES)
-                    || (globalID && [id isEqualToGlobalID:aObjectID] == YES)
+                oid = [object objectID];
+                if (   (localID && [oid isEqualToLocalID:aObjectID] == YES)
+                    || (globalID && [oid isEqualToGlobalID:aObjectID] == YES)
                    )
                 {
                     return object;
@@ -648,7 +649,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 /*
  *    Insert and delete registered objects
  */
-- (void) insertObject: ({CPManagedObject}) aObject
+- (void) insertObject: (CPManagedObject) aObject
 {
     if([aObject objectID] == nil)
     {
@@ -678,13 +679,13 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 }
 
 
-- (void) deleteObject: ({CPManagedObject}) aObject
+- (void) deleteObject: (CPManagedObject) aObject
 {
     [self _deleteObject:aObject saveAfterDeletion:YES];
 }
 
 
-- (void) _deleteObject: ({CPManagedObject}) aObject saveAfterDeletion:(BOOL) saveAfterDeletion
+- (void) _deleteObject: (CPManagedObject) aObject saveAfterDeletion:(BOOL) saveAfterDeletion
 {
     if ([self objectRegisteredForID: [aObject objectID]] != nil)
     {
@@ -724,7 +725,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 
 - (void) deleteObjectWithID: (CPManagedObjectID) aObjectId
 {
-    var aObject = [self objectRegisteredForID: objectID];
+    var aObject = [self objectRegisteredForID: aObjectId];
     if (aObject != nil)
     {
         [self deleteObject:aObject];

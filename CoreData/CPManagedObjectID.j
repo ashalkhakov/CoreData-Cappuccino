@@ -6,6 +6,9 @@
 
 @import <Foundation/Foundation.j>
 
+@class CPEntityDescription;
+@class CPManagedObjectContext;
+@class CPPersistentStore;
 
 @implementation CPManagedObjectID : CPObject
 {

@@ -6,9 +6,9 @@
 
 @interface CPRelationshipDescription : CPPropertyDescription
 {
-	CPDString _inversePropertyName @accessors(property=inversePropertyName);
-	CPDString _destinationEntityName @accessors(property=destinationEntityName);
-	BOOL _toMany @accessors(property=isToMany);
+	CPString _inversePropertyName @accessors(property=inversePropertyName);
+	CPString _destinationEntityName @accessors(property=destinationEntityName);
+	bool _toMany @accessors(property=isToMany);
 	int _deleteRule @accessors(property=deleteRule);
 }
 

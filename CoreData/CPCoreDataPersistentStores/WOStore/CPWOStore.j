@@ -85,7 +85,7 @@
 /*
  *	write all objects before store will close
  */
-- (void) saveAll:(CPSet) object error:({CPError}) error
+- (void) saveAll:(CPSet) object error:(@ref) error
 {
 	CPLog.debug(@"saveAll");
 }
@@ -94,7 +94,7 @@
 /*
  *	Request prefetched objects from store
  */
-- (CPSet)loadAll:(CPDictionary) properties inManagedObjectContext:(CPManagedObjectContext) aContext error:({CPError}) error
+- (CPSet)loadAll:(CPDictionary) properties inManagedObjectContext:(CPManagedObjectContext) aContext error:(@ref) error
 {
 	CPLog.debug(@"readDefaultObjects");
 
@@ -111,7 +111,7 @@
 			
 	if(result == nil)
 	{
-		CPLog.error(@"readDefaultObjects error description: " + [error localizedDescription]);
+		CPLog.error(@"readDefaultObjects error description: " + [@deref(error) localizedDescription]);
 	}
 	else
 	{
@@ -131,7 +131,7 @@
 - (CPSet) saveObjectsUpdated:(CPSet) updatedObjects
 			       inserted:(CPSet) insertedObjects
 				    deleted:(CPSet) deletedObjects
-					  error:({CPError}) error
+					  error:(@ref) error
 {
 	CPLog.debug(@"saveObjects");
 	
@@ -154,7 +154,7 @@
 	
 	if(result == nil)
 	{
-		CPLog.error(@"saveObjects error description: " + [error localizedDescription]);
+		CPLog.error(@"saveObjects error description: " + [@deref(error) localizedDescription]);
 	}
 	else
 	{
@@ -171,7 +171,7 @@
  */
 - (CPSet) executeFetchRequest:(CPFetchRequest) aFetchRequest
 	   inManagedObjectContext:(CPManagedObjectContext) aContext
-					  	error:({CPError}) error
+					  	error:(@ref) error
 {
 	return [CPSet new];
 }
@@ -188,7 +188,7 @@
 						 fetchQualifier:(CPString) aQualifier
 							 fetchLimit:(int) aFetchLimit
 				 inManagedObjectContext:(CPManagedObjectContext) aContext
-								  error:({CPError}) error
+								  error:(@ref) error
 {
 	CPLog.debug(@"fetchObjectsWithEntityNamed:fetchQualifier:fetchLimit");
 	
@@ -225,7 +225,7 @@
 - (CPSet) fetchObjectsWithID:(CPSet) objectIDs
 			   fetchProperties:(CPDictionary) properties
 		inManagedObjectContext:(CPManagedObjectContext) aContext
-						 error:({CPError}) error
+						 error:(@ref) error
 {
 	CPLog.debug(@"fetchObjectsWithID:fetchProperties");
 		

@@ -4,6 +4,8 @@
 //  Created by Raphael Bartolome on 06.01.10.
 //
 
+@import "NSFetchRequest.j"
+@import "CPFetchRequestTemplates.j"
 
 @implementation NSFetchRequestTemplates : CPFetchRequestTemplates
 {

@@ -19,8 +19,12 @@
 //
 
 @import <Foundation/Foundation.j>
+@import "CPPersistentStore.j"
+@import "CPPersistentStoreType.j"
 @import "CPHTTPStoreType.j"
 @import "CPHTTPPredicateEncoder.j"
+
+CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
 
 @implementation CPHTTPStore : CPPersistentStore
 {
@@ -28,12 +32,12 @@
     CPURLConnection  _activeConnection;
     int             _activeStatusCode;
     id              _activeResponse;     // CPHTTPURLResponse (or CPURLResponse)
-    CPMutableString _activeResponseText;
+    CPString        _activeResponseText;
     BOOL            _activeDone;
     id              _activeTransportError;
 }
 
-#pragma mark - Configuration
+// - Configuration
 
 - (CPString)_baseURL
 {
@@ -50,25 +54,25 @@
     return [self _baseURL] + @"/cdSave";
 }
 
-#pragma mark - loadAll / saveAll (stubs)
+// - loadAll / saveAll (stubs)
 
 - (CPSet)          loadAll:(CPDictionary)properties
     inManagedObjectContext:(CPManagedObjectContext)context
-                     error:(CPError)error
+                     error:(@ref)error
 {
     return [CPSet new];
 }
 
-- (void)saveAll:(CPSet)objects error:(CPError)error
+- (void)saveAll:(CPSet)objects error:(@ref)error
 {
     // not used; saveObjectsUpdated:inserted:deleted:... is the primary save path
 }
 
-#pragma mark - executeFetchRequest
+// - executeFetchRequest
 
 - (CPSet)executeFetchRequest:(CPFetchRequest)request
       inManagedObjectContext:(CPManagedObjectContext)context
-                       error:(CPError)error
+                       error:(@ref)error
 {
     var body = [self _buildFetchBody:request];
 
@@ -211,11 +215,11 @@
     return body;
 }
 
-#pragma mark - Fault fulfilment fetch
+// - Fault fulfilment fetch
 
 - (CPSet)fetchObjectsWithID:(CPSet)objectIDs
             fetchProperties:(CPDictionary)fetchProperties
-                      error:(CPError)error
+                      error:(@ref)error
 {
     if (objectIDs === nil || [objectIDs count] == 0)
         return [CPSet new];
@@ -296,13 +300,13 @@
     return obj;
 }
 
-#pragma mark - Save
+// - Save
 
 - (CPSet)saveObjectsUpdated:(CPSet)updatedObjects
                    inserted:(CPSet)insertedObjects
                     deleted:(CPSet)deletedObjects
      inManagedObjectContext:(CPManagedObjectContext)context
-                      error:(CPError)error
+                      error:(@ref)error
 {
     var insertedArray = [[CPMutableArray alloc] init],
         updatedArray  = [[CPMutableArray alloc] init],
@@ -419,7 +423,7 @@
     return resultSet;
 }
 
-#pragma mark - HTTP transport (status-aware)
+// - HTTP transport (status-aware)
 
 /*!
     POST JSON body to a URL and return a dictionary:
@@ -429,7 +433,7 @@
 */
 - (CPDictionary)_postJSONAndReturnHTTPResult:(id)bodyDict
                                       toURL:(CPString)urlString
-                                      error:(CPError)error
+                                      error:(@ref)error
 {
     // Serialize body
     var jsonString;
@@ -440,12 +444,12 @@
     catch (e)
     {
         if (error)
-            error = [self _cpErrorWithDomain:@"CPHTTPStore"
-                                        code:1001
-                                     message:@"JSON serialisation error"
-                                   httpStatus:0
-                                    apiError:nil
-                                    userInfo:@{ @"exception": String(e) }];
+            @deref(error) = [self _cpErrorWithDomain:@"CPHTTPStore"
+                                                code:1001
+                                             message:@"JSON serialisation error"
+                                          httpStatus:0
+                                            apiError:nil
+                                            userInfo:@{ @"exception": String(e) }];
         [self _raiseForError:error message:@"CPHTTPStore: JSON serialisation error"];
         return nil;
     }
@@ -463,7 +467,7 @@
     _activeConnection     = nil;
     _activeStatusCode     = 0;
     _activeResponse       = nil;
-    _activeResponseText   = [[CPMutableString alloc] init];
+    _activeResponseText   = [[CPString alloc] init];
     _activeDone           = NO;
     _activeTransportError = nil;
 
@@ -532,7 +536,7 @@
 */
 - (id)_parseOrdersAPIResponseFromHTTP:(CPDictionary)http
                               action:(CPString)action
-                               error:(CPError)error
+                               error:(@ref)error
 {
     var statusCode = [http objectForKey:@"statusCode"],
         text       = [http objectForKey:@"text"] || @"",
@@ -628,7 +632,7 @@
     return parsed;
 }
 
-#pragma mark - 422 / validation mapping
+// - 422 / validation mapping
 
 /*!
     Convert OrdersAPI 422 payload into a CoreData-like validation error.
@@ -742,7 +746,7 @@
     return [CPError errorWithDomain:domain code:httpStatus userInfo:ui];
 }
 
-#pragma mark - Generic error construction helpers
+// - Generic error construction helpers
 
 - (CPError)_cpErrorForOrdersAPIError:(id)apiErr
                           httpStatus:(int)httpStatus
@@ -819,7 +823,7 @@
     [CPException raise:@"CPHTTPStoreError" reason:(msg || @"CPHTTPStore error") userInfo:info];
 }
 
-#pragma mark - Object ID helpers (unchanged from original)
+// - Object ID helpers (unchanged from original)
 
 - (CPString)_globalIDStringForServerID:(id)serverID
 {
@@ -895,7 +899,7 @@
                                   entityName:[[objectID entity] name]];
 }
 
-#pragma mark - Object materialisation (unchanged)
+// - Object materialisation (unchanged)
 
 - (CPManagedObject)_materializeServerObject:(id)serverObj
                                     context:(CPManagedObjectContext)context
@@ -1076,7 +1080,7 @@
     return newID;
 }
 
-#pragma mark - Object encoding (unchanged)
+// - Object encoding (unchanged)
 
 - (CPDictionary)_encodeObjectForInsert:(CPManagedObject)obj
 {
@@ -1195,7 +1199,7 @@
     return @"t_" + [objectID localID];
 }
 
-#pragma mark - JSON conversion helper (unchanged)
+// - JSON conversion helper (unchanged)
 
 - (id)_toNativeObject:(id)obj
 {

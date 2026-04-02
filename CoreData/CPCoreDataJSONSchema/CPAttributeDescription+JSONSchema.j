@@ -1,3 +1,4 @@
+@import "CPAttributeDescription.j"
 
 @implementation CPAttributeDescription (CPJSONSchemaAttributeDescription)
 

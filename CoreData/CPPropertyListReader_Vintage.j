@@ -35,7 +35,6 @@ var QUOTING_CHARS = [':', '/', '-', '.', '\\'];
 
 	var d = [[CPMutableDictionary alloc] init];
 	var pos = 1;
-	var parsing = YES;
 	var key = nil;
 	var valbegin = -1;
 

@@ -6,6 +6,9 @@
 
 @import <Foundation/Foundation.j>
 
+@class CPManagedObjectModel;
+@class CPPersistentStore;
+
 @implementation CPPersistentStoreCoordinator : CPObject
 {
 	CPManagedObjectModel _model @accessors(property=managedObjectModel);
@@ -14,11 +17,11 @@
 	CPUndoManager _undoManager;
 }
 
-- (id) initWithManagedObjectModel: (NSManagedObjectModel *) aModel
+- (id) initWithManagedObjectModel: (NSManagedObjectModel) model
 {
 	if ((self = [super init]))
 	{
-		_model = model
+		_model = model;
 		_undoManager = [CPUndoManager new];
 		_persistentStores = [CPDictionary new];
 	}
@@ -54,16 +57,16 @@
 }
 
 - (BOOL) removePersistentStore: (id) aPersistentStore
-                         error: (NSError **) errorPointer
+                         error: (@ref)errorPointer
 {
 	//Unimplemented
 }
 
 - (id) migratePersistentStore: (id) aPersistentStore
-                        toURL: (NSURL *) aURL
-                      options: (NSDictionary *) options
-                     withType: (NSString *) newStoreType
-                        error: (NSError **) errorPointer
+                        toURL: (NSURL) aURL
+                      options: (NSDictionary) options
+                     withType: (NSString) newStoreType
+                        error: (@ref) errorPointer
 {
 	//Unimplemented
 }

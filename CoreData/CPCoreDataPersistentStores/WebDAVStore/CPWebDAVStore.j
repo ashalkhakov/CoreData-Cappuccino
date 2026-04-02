@@ -5,7 +5,8 @@
 //
 
 @import <Foundation/Foundation.j>
-
+@import "CPManagedObject+CPCoreDataSerialization.j"
+@import "CPWebDAVRequest.j"
 
 @implementation CPWebDAVStore : CPPersistentStore
 {
@@ -75,7 +76,7 @@
 }
 
 
-- (void) saveAll:(CPSet) objects error:({CPError}) error
+- (void) saveAll:(CPSet) objects error:(@ref) error
 {
 	if([[self format] isEqualToString:CPCoreDataSerializationXMLFormat])
 	{
@@ -96,7 +97,7 @@
 }
 
 
-- (CPSet)loadAll:(CPDictionary) properties inManagedObjectContext:(CPManagedObjectContext) aContext error:({CPError}) error
+- (CPSet)loadAll:(CPDictionary) properties inManagedObjectContext:(CPManagedObjectContext) aContext error:(@ref) error
 {
 	var resultSet = nil;
 	

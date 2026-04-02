@@ -1,3 +1,2 @@
 
-JSV = require("jsv.js");
-
+//@import "JSV.js"

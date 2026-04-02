@@ -39,13 +39,13 @@
 /*
  *    write all objects before store will close
  */
-- (void) saveAll:(CPSet)objects error:({CPError})error
+- (void) saveAll:(CPSet)objects error:(@ref)error
 {
     [[self dataStorage] setValue:[[objects serializeTo280NPLIST:YES containsChangedProperties:NO] rawString] forKey:[self storeName]+@"-Objects"];
 
 }
 
-- (CPSet)loadAll:(CPDictionary) properties inManagedObjectContext:(CPManagedObjectContext) aContext error:({CPError}) error
+- (CPSet)loadAll:(CPDictionary) properties inManagedObjectContext:(CPManagedObjectContext) aContext error:(@ref) error
 {
     var resultValue = [[self dataStorage] getValueForKey:[self storeName]+@"-Objects"];
     if(resultValue == null)

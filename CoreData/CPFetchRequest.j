@@ -4,8 +4,9 @@
 //  Created by Raphael Bartolome on 11.11.09.
 //
 
-@import <Foundation/CPObject.j>
+@import <Foundation/Foundation.j>
 
+@class CPEntityDescription;
 
 /**
     Parameters for a fetch request.

@@ -1,3 +1,5 @@
+@import <Foundation/Foundation.j>
+@import "CPManagedObjectModel.j"
 
 /*!
     Create a managed object model from a JSON Schema.
@@ -96,6 +98,8 @@
     id _delegate;
     id _iter;
     CPString _currentName;
+    int _statusReceived;
+    CPString _dataReceived;
 
     int _retryCount;
 }

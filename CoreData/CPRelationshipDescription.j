@@ -5,9 +5,11 @@
 //
 
 @import <Foundation/CPObject.j>
+@import <Foundation/CPString.j>
 @import "CPPropertyDescription.j"
 @import "CPManagedObject.j"
 
+@class CPManagedObject;
 
 CPRelationshipDescriptionDeleteRuleNullify = 0;
 CPRelationshipDescriptionDeleteRuleCascade = 1;
@@ -17,8 +19,8 @@ CPRelationshipDescriptionDeleteRuleNoAction = 3;
 
 @implementation CPRelationshipDescription : CPPropertyDescription
 {
-	CPDString _inversePropertyName @accessors(property=inversePropertyName);
-	CPDString _destinationEntityName @accessors(property=destinationEntityName);
+	CPString _inversePropertyName @accessors(property=inversePropertyName);
+	CPString _destinationEntityName @accessors(property=destinationEntityName);
 	BOOL _toMany @accessors(property=isToMany);
 	int _deleteRule @accessors(property=deleteRule);
 }
@@ -39,7 +41,7 @@ CPRelationshipDescriptionDeleteRuleNoAction = 3;
 - (BOOL)acceptValue:(id) aValue
 {
 	var result = NO;
-	var theProperty = [[self propertiesByName] objectForKey:aKey]
+	var theProperty = [[self propertiesByName] objectForKey:_name];
 	result = [theProperty acceptValue:aValue];
 	return result;
 }

@@ -2,7 +2,6 @@
 @import <Foundation/Foundation.j>
 
 @import "../CPError.j"
-@import "../CPReference.j"
 
 @import "../CPPersistentStore.j"
 @import "../CPPersistentStoreType.j"

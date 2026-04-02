@@ -10,6 +10,9 @@
 @import "CPRelationshipDescription.j"
 @import "CPManagedObject.j"
 
+@class CPManagedObject;
+@class CPManagedObjectModel;
+
 @implementation CPEntityDescription : CPObject
 {
 	CPManagedObjectModel _model @accessors(property=model);
@@ -164,7 +167,7 @@
 
 - (BOOL)acceptValue:(id) aValue forProperty:(CPString) aKey
 {
-	var theProperty = [[self propertiesByName] objectForKey:aKey]
+	var theProperty = [_propertiesByName objectForKey:aKey]
 	return [theProperty acceptValue:aValue];
 }
 

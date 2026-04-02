@@ -6,6 +6,7 @@
 
 @import <Foundation/Foundation.j>
 
+@class CPPersistentStoreCoordinator;
 
 @implementation CPPersistentStore : CPObject
 {

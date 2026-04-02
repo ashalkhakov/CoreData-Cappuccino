@@ -5,14 +5,17 @@
 //
 
 @import <Foundation/Foundation.j>
-
+@import "CPPersistentStoreType.j"
+@import "CPPersistentStore.j"
+@import "CPManagedObject+CPCoreDataSerialization.j"
+@import "CPMemoryStoreType.j"
 
 @implementation CPMemoryStore : CPPersistentStore
 {
-	CPString _storeID;
-	CPURL _URL;
-	CPMutableDictionary _configuration;
-	CPMutableDictionary _metadata;
+	//CPString _storeID;
+	//CPURL _URL;
+	//CPMutableDictionary _configuration;
+	//CPMutableDictionary _metadata;
 
 	CPManagedObjectModel _model @accessors(property=model);
 }
@@ -101,7 +104,7 @@
 /*
  *	The CPManagedObjectContext calls this method before it closed
  */
-- (void) saveAll:(CPSet) objects error:({CPError}) error
+- (void) saveAll:(CPSet) objects error:(@ref) error
 {
 }
 
@@ -110,7 +113,7 @@
  *	and update and registrate the objects from reponse
  *	@return a set of CPManagedObjects with cheap relationship
  */
-- (CPSet)loadAll:(CPDictionary) properties inManagedObjectContext:(CPManagedObjectContext) aContext error:({CPError}) error
+- (CPSet)loadAll:(CPDictionary) properties inManagedObjectContext:(CPManagedObjectContext) aContext error:(@ref) error
 {
 	var resultSet = nil;
 	var data = [CPURLConnection sendSynchronousRequest:[CPURLRequest requestWithURL:[self resourcesFile]] returningResponse:nil];

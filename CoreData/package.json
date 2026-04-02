@@ -1,12 +1,13 @@
 {
     "name": "coredata",
-    "dependencies": [
-        "narwhal",
-        "browserjs",
-        "jake",
-        "objective-j",
-        "cappuccino"
-    ],
+    "version": "0.3.0",
+    "dependencies": {
+        "@objj/cappuccino": "latest",
+        "@objj/jake": "latest",
+        "@objj/ojtest": "latest",
+        "@objj/runtime": "^1.2.4",
+        "JSV": "^4.0.2"
+    },
     "description": "CoreData cappuccino module",
     "keywords": [
         "objective-j",
@@ -16,7 +17,7 @@
         "cappuccino",
         "coredata"
     ],
-    "author": "",
+    "author": "Raphael Bartolome",
     "objj-frameworks": [
         "Frameworks"
     ],
@@ -25,6 +26,18 @@
     ],
     "contributors": [
         "Raphael Bartolome",
-        "Jürgen Kartnaller"
+        "Jürgen Kartnaller",
+        "Artyom Shalkhakov"
     ],
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/ashalkhakov/CoreData-Cappuccino.git"
+    },
+    "engines": {
+        "node": ">=14.0.0"
+    },
+    "devDependencies": {
+        "esbuild": "^0.27.5"
+    }
 }
