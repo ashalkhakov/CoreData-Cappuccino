@@ -4,9 +4,10 @@
 //  HTTP-backed persistent store targeting the OrdersAPI cdFetch / cdSave
 //  endpoints.
 //
-//  This version adds HTTP status-aware transport and proper error propagation
+//  Adds HTTP status-aware transport and proper error propagation
 //  for non-200 responses (400, 409, 422) using CPURLConnection delegate API.
-//  (429 intentionally left for later as requested.)
+//
+//  422 handling: map OrdersAPI error JSON into CoreData-like validation errors.
 //
 //  Notes
 //  -----
@@ -24,12 +25,12 @@
 @implementation CPHTTPStore : CPPersistentStore
 {
     // Transport state for our synchronous wrapper
-    CPURLConnection _activeConnection;
-    int            _activeStatusCode;
-    id             _activeResponse;     // CPHTTPURLResponse (or CPURLResponse)
+    CPURLConnection  _activeConnection;
+    int             _activeStatusCode;
+    id              _activeResponse;     // CPHTTPURLResponse (or CPURLResponse)
     CPMutableString _activeResponseText;
-    BOOL           _activeDone;
-    id             _activeTransportError;
+    BOOL            _activeDone;
+    id              _activeTransportError;
 }
 
 #pragma mark - Configuration
@@ -73,13 +74,13 @@
 
     var http = [self _postJSONAndReturnHTTPResult:body toURL:[self _cdFetchURL] error:error];
     if (http === nil)
-        return [CPSet new]; // error already set and exception raised
+        return [CPSet new];
 
     var parsed = [self _parseOrdersAPIResponseFromHTTP:http
                                               action:@"cdFetch"
                                                error:error];
     if (parsed === nil)
-        return [CPSet new]; // error already set and exception raised
+        return [CPSet new];
 
     // --- count result type ---------------------------------------------------
     if (parsed.count !== undefined)
@@ -146,24 +147,6 @@
 
 /*!
     Build the cdFetch request body from a CPFetchRequest.
-
-    Supported CPFetchRequest fields
-    --------------------------------
-    entity                   → "entity"
-    predicate                → "predicate" (encoded via CPHTTPPredicateEncoder;
-                               a raw CPDictionary is passed through)
-    sortDescriptors          → "sort": [{key, dir}]
-    fetchLimit               → "limit"
-    fetchOffset              → "offset"
-    propertiesToFetch        → "include": {relationships:[...], depth:N}
-                               (pass an array of relationship name strings;
-                               a single-element array ["count"] means resultType=count)
-    transparentFetch == YES  → "return": {"onlyIDs": true}
-
-    Additional cdFetch modes
-    -------------------------
-    Pass a CPDictionary predicate with an "ids" key to trigger fault-fulfillment
-    fetch mode directly.
 */
 - (CPDictionary)_buildFetchBody:(CPFetchRequest)request
 {
@@ -230,11 +213,6 @@
 
 #pragma mark - Fault fulfilment fetch
 
-// ---------------------------------------------------------------------------
-// fetchObjectsWithID:fetchProperties:error:
-//   Called by CPManagedObjectContext._fetchObjectWithID: when a fault fires.
-// ---------------------------------------------------------------------------
-
 - (CPSet)fetchObjectsWithID:(CPSet)objectIDs
             fetchProperties:(CPDictionary)fetchProperties
                       error:(CPError)error
@@ -259,8 +237,6 @@
     if ([idsArray count] == 0)
         return [CPSet new];
 
-    // Use the entity from the first valid object ID for the required "entity" field.
-    // The ids array itself carries per-object entity information.
     var firstID = [[objectIDs objectEnumerator] nextObject];
     var entityName = (firstID !== nil && [firstID entity] !== nil)
                         ? [[firstID entity] name]
@@ -271,7 +247,7 @@
 
     var http = [self _postJSONAndReturnHTTPResult:body toURL:[self _cdFetchURL] error:error];
     if (http === nil)
-        return [CPSet new]; // error set and exception raised
+        return [CPSet new];
 
     var parsed = [self _parseOrdersAPIResponseFromHTTP:http
                                               action:@"cdFetch(ids)"
@@ -296,11 +272,6 @@
     return resultSet;
 }
 
-/*!
-    Materialise a server object without needing a managed object context
-    (used by fetchObjectsWithID:fetchProperties:error:).
-    Relationships are not applied.
-*/
 - (CPManagedObject)_materializeServerObjectWithoutContext:(id)serverObj
 {
     var serverID   = serverObj.id     || serverObj[@"id"];
@@ -452,11 +423,9 @@
 
 /*!
     POST JSON body to a URL and return a dictionary:
-        { statusCode: <int>, text: <string> }
+        { statusCode: <int>, text: <string>, url: <string> }
 
     On transport-level failure (no response), sets *error and raises.
-    On non-200 response, still returns the HTTP result; higher-level code parses
-    OrdersAPI JSON and raises with a structured error.
 */
 - (CPDictionary)_postJSONAndReturnHTTPResult:(id)bodyDict
                                       toURL:(CPString)urlString
@@ -491,11 +460,11 @@
     [req setHTTPBody:jsonString];
 
     // Reset state
-    _activeConnection    = nil;
-    _activeStatusCode    = 0;
-    _activeResponse      = nil;
-    _activeResponseText  = [[CPMutableString alloc] init];
-    _activeDone          = NO;
+    _activeConnection     = nil;
+    _activeStatusCode     = 0;
+    _activeResponse       = nil;
+    _activeResponseText   = [[CPMutableString alloc] init];
+    _activeDone           = NO;
     _activeTransportError = nil;
 
     // Fire async request
@@ -556,6 +525,9 @@
     Parse OrdersAPI JSON from an HTTP result, and convert non-200 / ok:false
     into CPError + exception.
 
+    For 422 specifically: create CoreData-like validation error(s) based on the
+    OrdersAPI `error.errors[]` array (entity, temp/id, path, kind, message, op, index).
+
     Returns parsed JS object on success (HTTP 200 and parsed.ok == true).
 */
 - (id)_parseOrdersAPIResponseFromHTTP:(CPDictionary)http
@@ -577,6 +549,20 @@
     if (statusCode !== 200)
     {
         var apiErr = (parsed && parsed.error) ? parsed.error : nil;
+
+        // 422: map into validation-style error(s)
+        if (statusCode === 422)
+        {
+            if (error)
+                error = [self _cpCoreDataValidationErrorFromOrdersAPIError:apiErr
+                                                                httpStatus:422
+                                                                       url:url
+                                                                    action:action
+                                                              responseText:text];
+
+            [self _raiseForError:error message:@"CPHTTPStore: validation failed (422)"];
+            return nil;
+        }
 
         if (error)
             error = [self _cpErrorForOrdersAPIError:apiErr
@@ -611,6 +597,22 @@
     if (!parsed.ok)
     {
         var apiErr = parsed.error || nil;
+
+        // Some servers may return ok:false with 200; if domain suggests validation,
+        // we still want CoreData-like validation errors.
+        var isValidation = apiErr && apiErr.domain && (apiErr.domain === "Validation");
+        if (isValidation)
+        {
+            if (error)
+                error = [self _cpCoreDataValidationErrorFromOrdersAPIError:apiErr
+                                                                httpStatus:200
+                                                                       url:url
+                                                                    action:action
+                                                              responseText:text];
+            [self _raiseForError:error message:@"CPHTTPStore: validation failed (ok:false)"];
+            return nil;
+        }
+
         if (error)
             error = [self _cpErrorForOrdersAPIError:apiErr
                                          httpStatus:200
@@ -626,7 +628,121 @@
     return parsed;
 }
 
-#pragma mark - Error construction helpers
+#pragma mark - 422 / validation mapping
+
+/*!
+    Convert OrdersAPI 422 payload into a CoreData-like validation error.
+
+    OrdersAPI error envelope shape:
+      { domain, code, message, requestID, errors:[ {entity, kind, message, path, temp, id, op, index}, ... ] }
+
+    We generate:
+      - a top-level CPError with domain=apiErr.domain (e.g. "Validation" or "Persistence")
+        code=422
+      - userInfo contains:
+          - httpStatus, url, action, api.code, api.requestID, api.message
+          - api.errors  (original array)
+          - coredata.validationErrors: array of per-field error dictionaries
+            (best-effort mapping)
+          - coredata.affectedEntities: grouping by entity/temp/id
+
+    This is intentionally “CoreData-like” but not a perfect clone; it gives your
+    client enough structured information to show field errors and decide which
+    managed object failed (using temp/id/entity).
+*/
+- (CPError)_cpCoreDataValidationErrorFromOrdersAPIError:(id)apiErr
+                                            httpStatus:(int)httpStatus
+                                                   url:(CPString)url
+                                                action:(CPString)action
+                                          responseText:(CPString)responseText
+{
+    var domain = (apiErr && apiErr.domain) ? apiErr.domain : @"Validation";
+    var apiCode = (apiErr && apiErr.code) ? apiErr.code : @"validation_failed";
+    var apiMsg  = (apiErr && apiErr.message) ? apiErr.message : @"Validation failed";
+
+    var ui = [CPMutableDictionary dictionary];
+    [ui setObject:httpStatus forKey:@"httpStatus"];
+    if (url)    [ui setObject:url forKey:@"url"];
+    if (action) [ui setObject:action forKey:@"action"];
+    [ui setObject:apiCode forKey:@"api.code"];
+    [ui setObject:apiMsg  forKey:@"api.message"];
+
+    if (apiErr && apiErr.requestID)
+        [ui setObject:apiErr.requestID forKey:@"api.requestID"];
+
+    if (apiErr && apiErr.errors)
+        [ui setObject:apiErr.errors forKey:@"api.errors"];
+
+    if (responseText)
+        [ui setObject:responseText forKey:@"responseText"];
+
+    // Build per-item validation errors
+    var vErrs = [[CPMutableArray alloc] init];
+    var affected = [CPMutableDictionary dictionary]; // key -> {entity,temp,id,errors:[]}
+
+    var errs = (apiErr && apiErr.errors) ? apiErr.errors : [];
+    for (var i = 0; i < errs.length; i++)
+    {
+        var e = errs[i] || {};
+        var ent  = e.entity || @"";
+        var temp = e.temp || null;
+        var gid  = e.id   || null;
+        var kind = e.kind || @"validation";
+        var msg  = e.message || @"Validation error";
+        var path = e.path || null;
+        var op   = e.op   || null;
+        var idx  = (e.index !== undefined) ? e.index : null;
+
+        // Best-effort: interpret JSON path
+        // values.city -> propertyName="city"
+        // relationships.shippingAddress -> propertyName="shippingAddress"
+        var propertyName = null;
+        if (path)
+        {
+            var dot = path.indexOf(".");
+            if (dot >= 0 && dot + 1 < path.length)
+                propertyName = path.substring(dot + 1);
+            else
+                propertyName = path;
+        }
+
+        var entry = @{
+            @"entity": ent,
+            @"temp": temp,
+            @"id": gid,
+            @"kind": kind,
+            @"message": msg,
+            @"path": path,
+            @"property": propertyName,
+            @"op": op,
+            @"index": idx
+        };
+        [vErrs addObject:entry];
+
+        // Group by entity+temp/id
+        var key = ent + @"|" + (temp ? ("temp=" + temp) : (gid ? ("id=" + JSON.stringify(gid)) : "unknown"));
+        var bucket = [affected objectForKey:key];
+        if (!bucket)
+        {
+            bucket = [CPMutableDictionary dictionary];
+            [bucket setObject:ent forKey:@"entity"];
+            if (temp) [bucket setObject:temp forKey:@"temp"];
+            if (gid)  [bucket setObject:gid  forKey:@"id"];
+            [bucket setObject:[CPMutableArray array] forKey:@"errors"];
+            [affected setObject:bucket forKey:key];
+        }
+        [[bucket objectForKey:@"errors"] addObject:entry];
+    }
+
+    [ui setObject:vErrs forKey:@"coredata.validationErrors"];
+    [ui setObject:affected forKey:@"coredata.affectedEntities"];
+
+    // Top-level error uses HTTP code as code, domain from server
+    // (so callers can distinguish Validation vs Persistence vs Conflict etc.)
+    return [CPError errorWithDomain:domain code:httpStatus userInfo:ui];
+}
+
+#pragma mark - Generic error construction helpers
 
 - (CPError)_cpErrorForOrdersAPIError:(id)apiErr
                           httpStatus:(int)httpStatus
@@ -653,7 +769,10 @@
     if (responseText)
         [ui setObject:responseText forKey:@"responseText"];
 
-    // CPError in this codebase is NSError-like; keep it simple.
+    // Provide a localized description key when available in this runtime
+    if (fallbackMessage)
+        [ui setObject:fallbackMessage forKey:CPErrorLocalizedDescriptionKey];
+
     return [CPError errorWithDomain:domain
                                code:httpStatus
                            userInfo:ui];
@@ -693,8 +812,6 @@
 
 - (void)_raiseForError:(CPError)err message:(CPString)msg
 {
-    // Raise an exception (CoreData-like: operations throw/return error).
-    // Keep message short; include error in userInfo where possible.
     var info = [CPMutableDictionary dictionary];
     if (err) [info setObject:err forKey:@"error"];
     if (msg) [info setObject:msg forKey:@"message"];

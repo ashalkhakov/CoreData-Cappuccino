@@ -7,7 +7,7 @@
 //  Supported operators
 //  -------------------
 //  Comparison:   ==  !=  <  <=  >  >=  contains  beginswith  in
-//  Null-checks:  == nil  (→ isnull),  != nil  (→ notnull)
+//  Null-checks:  == nil  (isnull),  != nil  (notnull)
 //  Compound:     and  or  not
 //
 //  Raw-dictionary pass-through
