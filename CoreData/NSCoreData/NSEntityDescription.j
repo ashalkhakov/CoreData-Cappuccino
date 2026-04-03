@@ -4,6 +4,8 @@
 //  Created by Raphael Bartolome on 06.01.10.
 //
 
+@import "../CPEntityDescription.j"
+
 @implementation NSEntityDescription : CPEntityDescription
 {
     NSManagedObjectModel ns_model;

@@ -66,16 +66,6 @@ const buildDir = path.resolve(env["BUILD_PATH"] || env["CAPP_BUILD"] || "Build")
 */
 
 const sourceDirs = [
-    "NSCoreData",
-    "CPCoreDataCategories",
-    "CPCoreDataHeaders",
-    "CPCoreDataJSONSchema",
-    "CPCoreDataPersistentStores",
-    "CPCoreDataPersistentStores/HTML5Store",
-    "CPCoreDataPersistentStores/HTTPStore",
-    "CPCoreDataPersistentStores/MemoryStore",
-    "CPCoreDataPersistentStores/WebDAVStore",
-    "CPCoreDataPersistentStores/WOStore"
     ];
 
 /*
@@ -152,7 +142,16 @@ task("test", function()
     var cmd = ["ojtest"].concat(tests.items());
     var cmdString = cmd.map(utilsFile.enquote).join(" ");
 
-    childProcess.execSync(cmdString);
+    try
+    {
+        childProcess.execSync(cmdString, { stdio: "inherit" });
+    }
+    catch (e)
+    {
+        if (e.stdout) process.stdout.write(e.stdout);
+        if (e.stderr) process.stderr.write(e.stderr);
+        process.exit(e.status);
+    }
 });
 
 task ("debug", function()

@@ -64,8 +64,19 @@
 -(void)testSaveOnlyOneObject
 {
     var obj = [context insertNewObjectForEntityForName:"Testentity"];
+
+    [self assert:1
+          equals:[[context insertedObjects] count]
+         message:"hmmmm"];
+
     var obj1 = [context insertNewObjectForEntityForName:"Testentity"];
+
+    [self assert:2
+          equals:[[context insertedObjects] count]
+         message:"hmmmm#2"];
+
     [self assertTrue:[context saveObject:obj error:nil]];
+
     [self assert:1
           equals:[[context insertedObjects] count]
          message:"Too many inserted objects in context after save!"];

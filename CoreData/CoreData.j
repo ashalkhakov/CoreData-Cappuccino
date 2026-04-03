@@ -21,27 +21,27 @@
 @import "CPFetchRequest.j"
 @import "CPFetchRequestTemplates.j"
 
-@import "CPCoreDataCategories.j"
-@import "CPCoreDataJSONSchema.j"
-@import "NSCoreData.j"
+@import "CPCoreDataCategories/CPCoreDataCategories.j"
+@import "CPCoreDataJSONSchema/CPCoreDataJSONSchema.j"
+@import "NSCoreData/NSCoreData.j"
 
 //Memory store
-@import "CPMemoryStore.j"
-@import "CPMemoryStoreType.j"
+@import "CPCoreDataPersistentStores/MemoryStore/CPMemoryStore.j"
+@import "CPCoreDataPersistentStores/MemoryStore/CPMemoryStoreType.j"
 
 //WebDAV store
-@import "CPWebDAVStoreType.j"
-@import "CPWebDAVStore.j"
+@import "CPCoreDataPersistentStores/WebDAVStore/CPWebDAVStoreType.j"
+@import "CPCoreDataPersistentStores/WebDAVStore/CPWebDAVStore.j"
 
 //HTML5 store
-@import "CPHTML5Store.j"
-@import "CPHTML5StoreType.j"
+@import "CPCoreDataPersistentStores/HTML5Store/CPHTML5Store.j"
+@import "CPCoreDataPersistentStores/HTML5Store/CPHTML5StoreType.j"
 
 //WebObjects store
-@import "CPWOStore.j"
-@import "CPWOStoreType.j"
+@import "CPCoreDataPersistentStores/WOStore/CPWOStore.j"
+@import "CPCoreDataPersistentStores/WOStore/CPWOStoreType.j"
 
 //HTTP incremental store (OrdersAPI cdFetch / cdSave)
-@import "CPHTTPStoreType.j"
-@import "CPHTTPPredicateEncoder.j"
-@import "CPHTTPStore.j"
+@import "CPCoreDataPersistentStores/HTTPStore/CPHTTPStoreType.j"
+@import "CPCoreDataPersistentStores/HTTPStore/CPHTTPPredicateEncoder.j"
+@import "CPCoreDataPersistentStores/HTTPStore/CPHTTPStore.j"

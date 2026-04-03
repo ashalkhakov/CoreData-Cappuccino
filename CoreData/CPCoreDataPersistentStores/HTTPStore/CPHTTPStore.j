@@ -19,8 +19,8 @@
 //
 
 @import <Foundation/Foundation.j>
-@import "CPPersistentStore.j"
-@import "CPPersistentStoreType.j"
+@import "../../CPPersistentStore.j"
+@import "../../CPPersistentStoreType.j"
 @import "CPHTTPStoreType.j"
 @import "CPHTTPPredicateEncoder.j"
 
@@ -177,7 +177,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         while ((sd = [se nextObject]))
             [sortArray addObject:[CPDictionary dictionaryWithObjectsAndKeys:
                                       [sd key],                         @"key",
-                                      [sd ascending] ? @"asc" : @"desc", @"dir", nil]];
+                                      [sd ascending] ? @"asc" : @"desc", @"dir"]];
         [body setObject:sortArray forKey:@"sort"];
     }
 
@@ -202,7 +202,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
             var depth = [_configuration objectForKey:CPHTTPStoreDefaultIncludeDepth] || 1;
             [body setObject:[CPDictionary dictionaryWithObjectsAndKeys:
                                  propertiesToFetch, @"relationships",
-                                 depth,             @"depth", nil]
+                                 depth,             @"depth"]
                      forKey:@"include"];
         }
     }
@@ -247,7 +247,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
                         : @"";
     var body = [CPDictionary dictionaryWithObjectsAndKeys:
                     entityName, @"entity",
-                    idsArray,   @"ids", nil];
+                    idsArray,   @"ids"];
 
     var http = [self _postJSONAndReturnHTTPResult:body toURL:[self _cdFetchURL] error:error];
     if (http === nil)
@@ -341,8 +341,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
                     [CPDictionary dictionaryWithObjectsAndKeys:
                          YES, @"inserted",
                          NO,  @"updated",
-                         YES, @"includeRelationships", nil], @"return",
-                    nil];
+                         YES, @"includeRelationships"], @"return"];
 
     var http = [self _postJSONAndReturnHTTPResult:body toURL:[self _cdSaveURL] error:error];
     if (http === nil)
@@ -497,8 +496,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     return [CPDictionary dictionaryWithObjectsAndKeys:
                 _activeStatusCode, @"statusCode",
                 [CPString stringWithString:_activeResponseText], @"text",
-                urlString, @"url",
-                nil];
+                urlString, @"url"];
 }
 
 - (void)connection:(CPURLConnection)connection didReceiveResponse:(CPHTTPURLResponse)response
@@ -890,7 +888,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
 
     return [CPDictionary dictionaryWithObjectsAndKeys:
                 resolvedEntity, @"entity",
-                pk,             @"pk", nil];
+                pk,             @"pk"];
 }
 
 - (CPDictionary)_serverIDForObjectID:(CPManagedObjectID)objectID

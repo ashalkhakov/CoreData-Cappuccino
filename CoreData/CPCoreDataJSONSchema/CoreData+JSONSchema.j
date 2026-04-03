@@ -1,2 +1,2 @@
 
-//@import "JSV.js"
+var JSV = require("jsv").JSV;

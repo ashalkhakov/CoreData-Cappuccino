@@ -86,11 +86,11 @@
     if (op === @"not" && [encodedSubs count] == 1)
         return [CPDictionary dictionaryWithObjectsAndKeys:
                     op,                            @"op",
-                    [encodedSubs objectAtIndex:0], @"sub", nil];
+                    [encodedSubs objectAtIndex:0], @"sub"];
 
     return [CPDictionary dictionaryWithObjectsAndKeys:
                 op,         @"op",
-                encodedSubs, @"subs", nil];
+                encodedSubs, @"subs"];
 }
 
 + (CPDictionary)_encodeComparisonPredicate:(CPComparisonPredicate)predicate
@@ -113,14 +113,14 @@
     {
         return [CPDictionary dictionaryWithObjectsAndKeys:
                     @"isnull", @"op",
-                    key,       @"key", nil];
+                    key,       @"key"];
     }
     if (   operatorType == CPNotEqualToPredicateOperatorType
         && (value === nil || value === null || value === [CPNull null]))
     {
         return [CPDictionary dictionaryWithObjectsAndKeys:
                     @"notnull", @"op",
-                    key,        @"key", nil];
+                    key,        @"key"];
     }
 
     // in: the rhs is a collection
@@ -132,7 +132,7 @@
         return [CPDictionary dictionaryWithObjectsAndKeys:
                     @"in", @"op",
                     key,   @"key",
-                    items, @"value", nil];
+                    items, @"value"];
     }
 
     var opString = [self _operatorStringForType:operatorType];
@@ -145,7 +145,7 @@
     return [CPDictionary dictionaryWithObjectsAndKeys:
                 opString, @"op",
                 key,      @"key",
-                value,    @"value", nil];
+                value,    @"value"];
 }
 
 + (CPString)_operatorStringForType:(int)operatorType

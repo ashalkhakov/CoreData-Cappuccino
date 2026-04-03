@@ -1,5 +1,24 @@
 @import <Foundation/Foundation.j>
-@import "CPManagedObjectModel.j"
+@import "../CPManagedObjectModel.j"
+
+function _loadFromURL(url)
+{
+    var contents;
+    var _isNode = (typeof process !== "undefined" && process.versions && process.versions.node);
+    if (_isNode)
+    {
+        contents = require("fs").readFileSync(url, "utf8");
+    }
+    else
+    {
+        var request = [[CPURLRequest alloc] initWithURL:[CPURL URLWithString:url]];
+        [request setHTTPMethod:@"GET"];
+        [request setValue:@"text/plain" forHTTPHeaderField:@"Content-Type"];
+        var data = [CPURLConnection sendSynchronousRequest:request returningResponse:nil];
+        contents = [data rawString];
+    }
+    return contents;
+}
 
 /*!
     Create a managed object model from a JSON Schema.
@@ -18,11 +37,8 @@
     while (name = [iter nextObject])
     {
         var URL = [URLs objectForKey:name];
-        var request = [[CPURLRequest alloc] initWithURL:[CPURL URLWithString:URL]];
-        [request setHTTPMethod:@"GET"];
-        [request setValue:@"text/plain" forHTTPHeaderField:@"Content-Type"];
-        var data = [CPURLConnection sendSynchronousRequest:request returningResponse:nil];
-        [schemas setObject:[data rawString] forKey:name];
+        var contents = _loadFromURL(URL);
+        [schemas setObject:contents forKey:name];
     }
     return [[CPManagedObjectModel alloc] initWithJSONSchemas:schemas
                                                        named:aModelName];

@@ -1,4 +1,4 @@
-@import "CPManagedObject.j"
+@import "../CPManagedObject.j"
 
 @implementation CPManagedObject (CPManagedJSONObject)
 

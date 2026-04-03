@@ -1,6 +1,5 @@
 
 @import <OJUnit/OJTestCase.j>
-@import "../CPError.j"
 
 
 @implementation CPErrorTest : OJTestCase

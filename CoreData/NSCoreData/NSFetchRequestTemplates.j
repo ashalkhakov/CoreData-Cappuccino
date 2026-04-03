@@ -5,7 +5,7 @@
 //
 
 @import "NSFetchRequest.j"
-@import "CPFetchRequestTemplates.j"
+@import "../CPFetchRequestTemplates.j"
 
 @implementation NSFetchRequestTemplates : CPFetchRequestTemplates
 {

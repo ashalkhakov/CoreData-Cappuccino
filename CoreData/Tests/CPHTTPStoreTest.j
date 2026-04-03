@@ -24,7 +24,7 @@
     var raw = [CPDictionary dictionaryWithObjectsAndKeys:
                    @"beginswith", @"op",
                    @"fullName",   @"key",
-                   @"A",          @"value", nil];
+                   @"A",          @"value"];
 
     var result = [CPHTTPPredicateEncoder encodePredicateToAST:raw];
     [self assert:raw equals:result message:@"Raw dict should be returned unchanged"];
@@ -202,7 +202,7 @@
 - (void)testToNativeObjectDictionary
 {
     var store = [self _makeStore],
-        dict  = [CPDictionary dictionaryWithObjectsAndKeys:@"val", @"key", nil],
+        dict  = [CPDictionary dictionaryWithObjectsAndKeys:@"val", @"key"],
         result = [store _toNativeObject:dict];
     [self assert:@"val" equals:result[@"key"]];
 }

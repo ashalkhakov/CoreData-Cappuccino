@@ -386,18 +386,22 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
         deletedObjects = [CPSet new],
         obj;
     obj = [self _insertedObjectWithID:[aObject objectID]];
-    if (obj)
+    if (obj) {
         [insertedObjects addObject:obj];
+    }
     obj = [self _updatedObjectWithID:[aObject objectID]];
-    if (obj)
+    if (obj) {
         [updatedObjects addObject:obj];
+    }
     obj = [self _deletedObjectWithID:[aObject objectID]];
-    if (obj)
+    if (obj) {
         [deletedObjects addObject:obj];
+    }
     var modifiedObjects = [self _saveObjectsUpdated:updatedObjects
                                            inserted:insertedObjects
                                             deleted:deletedObjects
                                               error:@ref(saveError)];
+
     if (saveError == nil)
     {
         // update the state of the object in the context
@@ -655,6 +659,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     {
         [aObject setObjectID:[[CPManagedObjectID alloc] initWithEntity:[aObject entity] globalID:nil isTemporary:YES]];
     }
+
     var deletedObject = [self _deletedObjectWithID: [aObject objectID]];
     if (deletedObject != nil)
     {
@@ -668,6 +673,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
         [self _registerObject: aObject];
         [_insertedObjectIDs addObject: [aObject objectID]];
     }
+
     [aObject _applyToContext: self];
 
     var userInfo = [CPDictionary dictionaryWithObject: [CPSet setWithObject: aObject]
