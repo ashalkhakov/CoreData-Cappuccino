@@ -104,6 +104,13 @@
     return NO;
 }
 
+- (unsigned) hash
+{
+    if ([self validatedGlobalID])
+        return [[self globalID] hash];
+    return [[self localID] hash];
+}
+
 - (void)updateWithObjectID:(CPManagedObjectID)newObjectID
 {
     _globalID = [newObjectID globalID];

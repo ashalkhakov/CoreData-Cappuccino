@@ -43,6 +43,11 @@
 	return [aContext insertNewObjectForEntityForName:aEntityName];
 }
 
++ (CPEntityDescription)entityWithName:(CPString)aName inManagedObjectContext:(CPManagedObjectContext)aContext
+{
+	return [[aContext model] entityWithName:aName];
+}
+
 - (CPManagedObject)createObject
 {
 	var newObject;

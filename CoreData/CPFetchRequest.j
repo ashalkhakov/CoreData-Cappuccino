@@ -41,5 +41,15 @@
     CPError _error @accessors(property=error);
 }
 
+- (id)init
+{
+    if (self = [super init])
+    {
+        _fetchLimit = 0;
+        _fetchOffset = 0;
+    }
+    return self;
+}
+
 @end
 
