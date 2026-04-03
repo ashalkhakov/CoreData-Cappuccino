@@ -11,7 +11,7 @@
 
 -(void)setUp
 {
-    var entity = [[CPEntityDescription alloc] init];
+    entity = [[CPEntityDescription alloc] init];
     var attr = [[CPAttributeDescription alloc] init];
     [attr setName:"transform"];
     [attr setTypeValue:CPDTransformableAttributeType];
@@ -42,7 +42,7 @@
                               forProperty:"transform"]];
 }
 
--(void)testTransformationWithRegisteredTransformer
+-(void)testTransformationWithRegisteredTransformerReverse
 {
     [CPValueTransformer setValueTransformer:[[TestValueTransformer alloc] init]
                                     forName:@"TestValueTransformer"];

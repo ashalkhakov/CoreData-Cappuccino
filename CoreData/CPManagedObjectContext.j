@@ -381,9 +381,9 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
                 + ", del "  + [_deletedObjects count]);
     var result = NO,
         saveError = nil,
-        updatedObjects = [CPSet new],
-        insertedObjects = [CPSet new],
-        deletedObjects = [CPSet new],
+        updatedObjects = [CPMutableSet new],
+        insertedObjects = [CPMutableSet new],
+        deletedObjects = [CPMutableSet new],
         obj;
     obj = [self _insertedObjectWithID:[aObject objectID]];
     if (obj) {

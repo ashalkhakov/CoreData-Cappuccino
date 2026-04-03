@@ -90,15 +90,18 @@
     return YES;
 }
 
-//TODO check if this method is necessary
 - (BOOL) isEqual: (CPManagedObjectID) otherID
 {
-    if(![[self globalID] isEqual:[otherID globalID]] &&
-        [self isEqualToLocalID: otherID])
-    {
-      return NO;
-    }
-    return YES;
+    if (otherID == nil)
+        return NO;
+
+    if ([self validatedGlobalID] && [otherID validatedGlobalID])
+        return [self isEqualToGlobalID:otherID];
+
+    if ([self validatedLocalID] && [otherID validatedLocalID])
+        return [self isEqualToLocalID:otherID];
+
+    return NO;
 }
 
 - (void)updateWithObjectID:(CPManagedObjectID)newObjectID
