@@ -25,6 +25,15 @@ CPRelationshipDescriptionDeleteRuleNoAction = 3;
 	int _deleteRule @accessors(property=deleteRule);
 }
 
+- (id)init
+{
+	if (self = [super init])
+	{
+		_deleteRule = CPRelationshipDescriptionDeleteRuleNullify;
+	}
+	return self;
+}
+
 - (Class)destinationClassType
 {
 	var result = [CPManagedObject class];
