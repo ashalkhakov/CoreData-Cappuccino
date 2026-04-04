@@ -28,6 +28,7 @@
 - (BOOL) reset;
 - (void) _objectDidChange:(CPManagedObject) aObject;
 - (CPManagedObject) _registerObject:(CPManagedObject) object;
+- (CPManagedObject) _registerFetchedObject:(CPManagedObject) object;
 - (void) _unregisterObject:(CPManagedObject) object;
 - (void) _deleteObject: ({CPManagedObject}) aObject saveAfterDeletion:(BOOL) saveAfterDeletion;
 
@@ -190,7 +191,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
             }
             else
             {
-                [resultArray addObject:[self _registerObject:objectFromResponse]];
+                [resultArray addObject:[self _registerFetchedObject:objectFromResponse]];
             }
         }
     }
@@ -241,7 +242,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
             var objectFromResponse;
             while((objectFromResponse = [objectEnum nextObject]))
             {
-                [resultArray addObject:[self _registerObject:objectFromResponse]];
+                [resultArray addObject:[self _registerFetchedObject:objectFromResponse]];
             }
         }
     }
@@ -300,7 +301,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 
         while(objectFromResponse = [resultEnumerator nextObject])
         {
-            [self _registerObject:objectFromResponse];
+            [self _registerFetchedObject:objectFromResponse];
         }
     }
     [[CPNotificationCenter defaultCenter] postNotificationName:CPManagedObjectContextDidLoadObjectsNotification
@@ -427,6 +428,14 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     var saveError = nil;
     [self _validateUpdatedObject:updatedObjects
                  insertedObjects:insertedObjects];
+
+    // Notify all objects that are about to be saved
+    var allSavingObjects = [[CPMutableSet alloc] init];
+    [allSavingObjects unionSet:updatedObjects];
+    [allSavingObjects unionSet:insertedObjects];
+    [allSavingObjects unionSet:deletedObjects];
+    [[allSavingObjects allObjects] makeObjectsPerformSelector:@selector(willSave)];
+
     var resultSet = [[self store] saveObjectsUpdated:updatedObjects
                                             inserted:insertedObjects
                                              deleted:deletedObjects
@@ -450,6 +459,11 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     {
         // return the error to the caller
         @deref(error) = saveError;
+    }
+    else
+    {
+        // Save succeeded — notify all participating objects
+        [[allSavingObjects allObjects] makeObjectsPerformSelector:@selector(didSave)];
     }
     return resultSet;
 }
@@ -564,7 +578,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
                 while((objectFromResponse = [objectEnum nextObject]))
                 {
                     [[objectFromResponse objectID] setLocalID: [aObjectID localID]];
-                    objectFromResponse = [self _registerObject:objectFromResponse];
+                    objectFromResponse = [self _registerFetchedObject:objectFromResponse];
                     aObjectID = [objectFromResponse objectID];
                     return objectFromResponse;
                 }
@@ -666,12 +680,14 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
         [self _registerObject: aObject];
         [_deletedObjects removeObject: aObject];
         [_insertedObjectIDs addObject: [aObject objectID]];
-
     }
     else
     {
+        var isNew = ([self objectRegisteredForID:[aObject objectID]] == nil);
         [self _registerObject: aObject];
         [_insertedObjectIDs addObject: [aObject objectID]];
+        if (isNew)
+            [aObject awakeFromInsert];
     }
 
     [aObject _applyToContext: self];
@@ -695,6 +711,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 {
     if ([self objectRegisteredForID: [aObject objectID]] != nil)
     {
+        [aObject prepareForDeletion];
         if ([aObject _solveRelationshipsWithDeleteRules] == YES)
         {
             var needToSave = NO;
@@ -802,6 +819,23 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
         [aObject _applyToContext:self];
     }
     return aObject;
+}
+
+/*!
+    Register an object that arrived from a persistent store fetch.
+
+    This method calls _registerObject: and then fires awakeFromFetch on the
+    object if it was not already present in the context.  Use this from all
+    code paths where objects are received from the store rather than created
+    locally (loadAll:, executeStoreFetchRequest:, _fetchObjectWithID:).
+*/
+- (CPManagedObject) _registerFetchedObject: (CPManagedObject) aObject
+{
+    var wasRegistered = ([self objectRegisteredForID:[aObject objectID]] != nil);
+    var registered = [self _registerObject:aObject];
+    if (!wasRegistered)
+        [registered awakeFromFetch];
+    return registered;
 }
 
 

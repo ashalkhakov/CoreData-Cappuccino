@@ -635,6 +635,61 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
     return [self _validateForChanges];
 }
 
+
+/*
+ * Lifecycle hooks
+ *
+ * These methods are called by CPManagedObjectContext at the appropriate
+ * points in an object's lifecycle.  The default implementations are no-ops;
+ * subclasses should override them without calling super (matching Apple's
+ * NSManagedObject semantics).
+ */
+
+/*!
+    Called the first time the receiver is inserted into a managed object
+    context (i.e. after initWithEntity:inManagedObjectContext: completes).
+    Subclasses can override this to set default property values.
+*/
+- (void)awakeFromInsert
+{
+}
+
+/*!
+    Called after the receiver has been fetched from a persistent store and
+    populated with its persisted values.  Subclasses can override this to
+    perform any post-fetch initialisation.
+*/
+- (void)awakeFromFetch
+{
+}
+
+/*!
+    Called on every dirty object just before the context sends a save request
+    to the persistent store.  Subclasses can override this to make any last-
+    minute changes before the save.
+*/
+- (void)willSave
+{
+}
+
+/*!
+    Called on every object that was part of a successful save operation after
+    the save completes.  Subclasses can use this to trigger UI updates or
+    post-save bookkeeping.
+*/
+- (void)didSave
+{
+}
+
+/*!
+    Called when the object is scheduled for deletion, before relationships are
+    resolved and before the deletion is sent to the store.  Subclasses can
+    override this to clean up derived data or unlink external resources.
+*/
+- (void)prepareForDeletion
+{
+}
+
 - (BOOL)_validateForChanges
 {
     var result = YES,
