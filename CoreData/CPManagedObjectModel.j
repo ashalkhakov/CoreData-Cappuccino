@@ -16,6 +16,7 @@
 var EOMODEL_SUFFIX = "eomodeld";
 var COREDATAMODEL_SUFFIX = "xcdatamodel";
 var CPDCOREDATAMODEL_SUFFIX = "cpxcdatamodel";
+var COREDATAMODELD_SUFFIX = "xcdatamodeld";
 
 @implementation CPManagedObjectModel : CPObject
 {
@@ -42,6 +43,10 @@ var CPDCOREDATAMODEL_SUFFIX = "cpxcdatamodel";
         if([aModelName hasSuffix:EOMODEL_SUFFIX])
         {
             [objectModel parseEOModel:modelURL];
+        }
+        else if([aModelName hasSuffix:COREDATAMODELD_SUFFIX])
+        {
+            objectModel = [CPManagedObjectModel parseXCDataModelBundle:modelURL];
         }
         else if([aModelName hasSuffix:COREDATAMODEL_SUFFIX]
                     || [aModelName hasSuffix:CPDCOREDATAMODEL_SUFFIX])
@@ -92,6 +97,10 @@ var CPDCOREDATAMODEL_SUFFIX = "cpxcdatamodel";
 {
     var result = NO;
     if([aModelFile hasSuffix:EOMODEL_SUFFIX])
+    {
+        result = YES;
+    }
+    else if([aModelFile hasSuffix:COREDATAMODELD_SUFFIX])
     {
         result = YES;
     }
