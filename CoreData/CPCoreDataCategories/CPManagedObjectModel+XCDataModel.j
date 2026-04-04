@@ -45,7 +45,7 @@
         if (contentsData !== nil)
         {
             var xmlString = [contentsData rawString];
-            if (xmlString !== nil && xmlString.indexOf("<model") >= 0)
+            if ([self _isXCDataModelXML:xmlString])
             {
                 var model = [self _parseContentsXML:xmlString];
                 [model setNameFromFilePath:aModelName];
@@ -125,7 +125,7 @@
     if (contentsData !== nil)
     {
         var xmlString = [contentsData rawString];
-        if (xmlString !== nil && xmlString.indexOf("<model") >= 0)
+        if ([self _isXCDataModelXML:xmlString])
         {
             var model = [self _parseContentsXML:xmlString];
             [model setNameFromFilePath:aModelName];
@@ -141,6 +141,17 @@
 // ---------------------------------------------------------------------------
 // XML contents parser
 // ---------------------------------------------------------------------------
+
+/*!
+    Returns YES if the given string looks like an Xcode 4+ CoreData model XML
+    document (contains a '<model' element).  Used to distinguish the new XML
+    format from an empty or error response.
+*/
++ (BOOL) _isXCDataModelXML:(CPString) xmlString
+{
+    return xmlString !== nil && xmlString !== null
+        && xmlString.indexOf("<model") >= 0;
+}
 
 /*!
     Parse the XML contents of a Xcode 4+ .xcdatamodel/contents file and
