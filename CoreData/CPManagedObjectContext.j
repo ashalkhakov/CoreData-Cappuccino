@@ -683,6 +683,8 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     }
     else
     {
+        // isNew must be checked BEFORE _registerObject: adds the object to
+        // _registeredObjects; checking after would always yield NO.
         var isNew = ([self objectRegisteredForID:[aObject objectID]] == nil);
         [self _registerObject: aObject];
         [_insertedObjectIDs addObject: [aObject objectID]];

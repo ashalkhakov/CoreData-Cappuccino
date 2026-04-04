@@ -10,12 +10,16 @@
 @implementation TrackedManagedObject : CPManagedObject
 {
     CPMutableArray _lifecycleLog @accessors(property=lifecycleLog);
+    BOOL _isDeletedAtPrepare @accessors(property=isDeletedAtPrepare);
 }
 
 - (id)init
 {
     if (self = [super init])
+    {
         _lifecycleLog = [[CPMutableArray alloc] init];
+        _isDeletedAtPrepare = NO;
+    }
     return self;
 }
 
@@ -42,6 +46,8 @@
 - (void)prepareForDeletion
 {
     [_lifecycleLog addObject:@"prepareForDeletion"];
+    // Capture whether isDeleted is already set at the time the hook fires
+    _isDeletedAtPrepare = [self isDeleted];
 }
 
 @end
@@ -244,20 +250,21 @@
 
 - (void)testPrepareForDeletionCalledBeforeObjectMarkedDeleted
 {
-    // prepareForDeletion is called while the object is still registered, so
-    // isDeleted should be NO at the time the hook fires.  We capture this by
-    // checking that the flag flips after the hook (we check it is set after delete).
+    // prepareForDeletion fires before _solveRelationshipsWithDeleteRules and
+    // before [aObject setDeleted:YES], so isDeleted should still be NO at the
+    // moment the hook is invoked.  TrackedManagedObject captures this value
+    // in _isDeletedAtPrepare.
     var obj = [[TrackedManagedObject alloc] initWithEntity:entityDesc
                                     inManagedObjectContext:context];
 
     [context deleteObject:obj];
 
-    // After deleteObject: the object IS deleted
+    // After deleteObject: the object IS marked as deleted
     [self assertTrue:[obj isDeleted]
              message:@"Object should be marked as deleted after deleteObject:"];
-    // And prepareForDeletion was called
-    [self assertTrue:[[obj lifecycleLog] containsObject:@"prepareForDeletion"]
-             message:@"prepareForDeletion should have been called"];
+    // But at the moment prepareForDeletion fired it was NOT yet deleted
+    [self assertFalse:[obj isDeletedAtPrepare]
+              message:@"isDeleted should be NO when prepareForDeletion fires"];
 }
 
 @end
