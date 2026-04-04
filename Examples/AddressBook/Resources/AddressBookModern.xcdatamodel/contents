@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="24299" systemVersion="24G419" minimumToolsVersion="Xcode 4.1" sourceLanguage="Objective-C" userDefinedModelVersionIdentifier="">
+    <entity name="Address" representedClassName="Address" syncable="YES">
+        <attribute name="dateOfBirth" optional="YES" attributeType="Date" usesScalarValueType="NO" syncable="YES"/>
+        <attribute name="firstname" attributeType="String" defaultValueString="Untitled" syncable="YES"/>
+        <attribute name="lastname" attributeType="String" syncable="YES"/>
+        <attribute name="phone" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="NO" syncable="YES"/>
+        <relationship name="emails" toMany="YES" minCount="1" maxCount="2" deletionRule="Nullify" destinationEntity="EMail" inverseName="address" inverseEntity="EMail" indexed="YES" syncable="YES"/>
+    </entity>
+    <entity name="EMail" representedClassName="Email" syncable="YES">
+        <attribute name="mail" attributeType="String" syncable="YES"/>
+        <relationship name="address" optional="YES" minCount="1" maxCount="1" deletionRule="Nullify" destinationEntity="Address" inverseName="emails" inverseEntity="Address" indexed="YES" syncable="YES"/>
+    </entity>
+</model>
