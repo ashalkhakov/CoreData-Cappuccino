@@ -396,6 +396,13 @@ var _CPXMLDocumentFromString = function(anXMLString)
 };
 
 
+// Phase constants for CPXCDataModelLoader state machine
+var CPXCLoaderPhaseNewXMLContents = @"new_xml_contents";
+var CPXCLoaderPhaseOldPlist       = @"old_plist";
+var CPXCLoaderPhaseBundleVersion  = @"bundle_version";
+var CPXCLoaderPhaseBundleContents = @"bundle_contents";
+
+
 // ---------------------------------------------------------------------------
 // CPXCDataModelLoader
 //
@@ -409,17 +416,17 @@ var _CPXMLDocumentFromString = function(anXMLString)
 //   - (void)managedObjectModelDidFailToLoad:(CPString)modelPath
 //
 // Loading state machine for .xcdatamodel:
-//   "new_xml_contents" → try <path>/contents
+//   CPXCLoaderPhaseNewXMLContents → try <path>/contents
 //     success + XML  → parse, notify delegate
-//     failure / not XML → "old_plist": try <baseName>.cxcdatamodel
-//   "old_plist"
+//     failure / not XML → CPXCLoaderPhaseOldPlist: try <baseName>.cxcdatamodel
+//   CPXCLoaderPhaseOldPlist
 //     success → decode with CPKeyedUnarchiver, notify delegate
 //     failure → notify failure
 //
 // Loading state machine for .xcdatamodeld:
-//   "bundle_version" → try <path>/.xccurrentversion
+//   CPXCLoaderPhaseBundleVersion → try <path>/.xccurrentversion
 //     success or failure → extract version name, fall through to …
-//   "bundle_contents" → try <path>/<version>.xcdatamodel/contents
+//   CPXCLoaderPhaseBundleContents → try <path>/<version>.xcdatamodel/contents
 //     success + XML → parse, notify delegate
 //     failure → notify failure
 // ---------------------------------------------------------------------------
@@ -431,7 +438,6 @@ var _CPXMLDocumentFromString = function(anXMLString)
     CPString _phase;
     CPString _dataReceived;
     int      _statusReceived;
-    CPString _pendingContentsURL; // used when waiting for bundle_version to resolve
 }
 
 + (CPXCDataModelLoader) loaderWithModelPath:(CPString)aModelPath
@@ -449,13 +455,13 @@ var _CPXMLDocumentFromString = function(anXMLString)
     {
         // .xcdatamodeld bundle: first try .xccurrentversion
         [self _fetchURL:_modelPath + @"/.xccurrentversion"
-                  phase:@"bundle_version"];
+                  phase:CPXCLoaderPhaseBundleVersion];
     }
     else
     {
         // .xcdatamodel: try new XML contents first
         [self _fetchURL:_modelPath + @"/contents"
-                  phase:@"new_xml_contents"];
+                  phase:CPXCLoaderPhaseNewXMLContents];
     }
 }
 
@@ -506,7 +512,7 @@ var _CPXMLDocumentFromString = function(anXMLString)
 {
     var ok = (_statusReceived == 200);
 
-    if (_phase === @"new_xml_contents")
+    if (_phase === CPXCLoaderPhaseNewXMLContents)
     {
         if (ok && [CPManagedObjectModel _isXCDataModelXML:_dataReceived])
         {
@@ -519,10 +525,10 @@ var _CPXMLDocumentFromString = function(anXMLString)
             // Fall back to old .cxcdatamodel format
             var parts   = [_modelPath componentsSeparatedByString:@"."];
             var oldPath = [parts objectAtIndex:0] + @".cxcdatamodel";
-            [self _fetchURL:oldPath phase:@"old_plist"];
+            [self _fetchURL:oldPath phase:CPXCLoaderPhaseOldPlist];
         }
     }
-    else if (_phase === @"old_plist")
+    else if (_phase === CPXCLoaderPhaseOldPlist)
     {
         if (ok && _dataReceived !== nil && [_dataReceived length] > 0)
         {
@@ -540,7 +546,7 @@ var _CPXMLDocumentFromString = function(anXMLString)
             [self _notifyFailure];
         }
     }
-    else if (_phase === @"bundle_version")
+    else if (_phase === CPXCLoaderPhaseBundleVersion)
     {
         // Determine the active model name
         var activeModelName = nil;
@@ -562,9 +568,9 @@ var _CPXMLDocumentFromString = function(anXMLString)
             activeModelName = [slashParts lastObject];
         }
         var contentsURL = _modelPath + @"/" + activeModelName + @".xcdatamodel/contents";
-        [self _fetchURL:contentsURL phase:@"bundle_contents"];
+        [self _fetchURL:contentsURL phase:CPXCLoaderPhaseBundleContents];
     }
-    else if (_phase === @"bundle_contents")
+    else if (_phase === CPXCLoaderPhaseBundleContents)
     {
         if (ok && [CPManagedObjectModel _isXCDataModelXML:_dataReceived])
         {
@@ -585,21 +591,21 @@ var _CPXMLDocumentFromString = function(anXMLString)
     CPLog.warn(@"CPXCDataModelLoader: network error in phase '" + _phase
                + "' for " + _modelPath + ": " + error);
 
-    if (_phase === @"new_xml_contents")
+    if (_phase === CPXCLoaderPhaseNewXMLContents)
     {
         // Network error for new-format attempt: fall back to old format
         var parts   = [_modelPath componentsSeparatedByString:@"."];
         var oldPath = [parts objectAtIndex:0] + @".cxcdatamodel";
-        [self _fetchURL:oldPath phase:@"old_plist"];
+        [self _fetchURL:oldPath phase:CPXCLoaderPhaseOldPlist];
     }
-    else if (_phase === @"bundle_version")
+    else if (_phase === CPXCLoaderPhaseBundleVersion)
     {
         // .xccurrentversion not reachable — try default name
         var dotParts   = [_modelPath componentsSeparatedByString:@"."];
         var slashParts = [[dotParts objectAtIndex:0] componentsSeparatedByString:@"/"];
         var defaultName = [slashParts lastObject];
         var contentsURL = _modelPath + @"/" + defaultName + @".xcdatamodel/contents";
-        [self _fetchURL:contentsURL phase:@"bundle_contents"];
+        [self _fetchURL:contentsURL phase:CPXCLoaderPhaseBundleContents];
     }
     else
     {
