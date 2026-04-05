@@ -76,6 +76,27 @@
 }
 
 /*!
+    Asynchronously load a CoreData model from a .xcdatamodel path.
+
+    Uses CPURLConnection async API so the browser UI is not blocked.  The
+    delegate receives one of:
+      - managedObjectModelDidFinishLoading:(CPManagedObjectModel) — on success
+      - managedObjectModelDidFailToLoad:(CPString)              — on failure
+
+    @param aModelName  URL / file-system path of the .xcdatamodel resource.
+    @param aDelegate   Object implementing the informal delegate protocol above.
+    @return The CPXCDataModelLoader driving the request (may be ignored).
+*/
++ (id) parseCoreDataModelAsync:(CPString)aModelName
+                      delegate:(id)aDelegate
+{
+    var loader = [CPXCDataModelLoader loaderWithModelPath:aModelName
+                                                 delegate:aDelegate];
+    [loader start];
+    return loader;
+}
+
+/*!
     Load a CoreData model from a .xcdatamodeld bundle.
 
     The bundle contains one or more versioned .xcdatamodel packages.  The
@@ -135,6 +156,27 @@
 
     CPLog.warn(@"CPManagedObjectModel: could not load model bundle at " + aModelName);
     return [[CPManagedObjectModel alloc] init];
+}
+
+/*!
+    Asynchronously load a CoreData model from a .xcdatamodeld bundle.
+
+    Uses CPURLConnection async API so the browser UI is not blocked.  The
+    delegate receives one of:
+      - managedObjectModelDidFinishLoading:(CPManagedObjectModel) — on success
+      - managedObjectModelDidFailToLoad:(CPString)              — on failure
+
+    @param aModelName  URL / file-system path of the .xcdatamodeld resource.
+    @param aDelegate   Object implementing the informal delegate protocol above.
+    @return The CPXCDataModelLoader driving the request (may be ignored).
+*/
++ (id) parseXCDataModelBundleAsync:(CPString)aModelName
+                          delegate:(id)aDelegate
+{
+    var loader = [CPXCDataModelLoader loaderWithModelPath:aModelName
+                                                 delegate:aDelegate];
+    [loader start];
+    return loader;
 }
 
 
@@ -352,3 +394,218 @@ var _CPXMLDocumentFromString = function(anXMLString)
         return nil;
     }
 };
+
+
+// ---------------------------------------------------------------------------
+// CPXCDataModelLoader
+//
+// Async helper class that mirrors the role of CPManagedObjectModelLoader in
+// CPManagedObjectModel+JSONSchema.j but targets the XCDataModel format.
+//
+// Delegate informal protocol (required):
+//   - (void)managedObjectModelDidFinishLoading:(CPManagedObjectModel)model
+//
+// Delegate informal protocol (optional):
+//   - (void)managedObjectModelDidFailToLoad:(CPString)modelPath
+//
+// Loading state machine for .xcdatamodel:
+//   "new_xml_contents" → try <path>/contents
+//     success + XML  → parse, notify delegate
+//     failure / not XML → "old_plist": try <baseName>.cxcdatamodel
+//   "old_plist"
+//     success → decode with CPKeyedUnarchiver, notify delegate
+//     failure → notify failure
+//
+// Loading state machine for .xcdatamodeld:
+//   "bundle_version" → try <path>/.xccurrentversion
+//     success or failure → extract version name, fall through to …
+//   "bundle_contents" → try <path>/<version>.xcdatamodel/contents
+//     success + XML → parse, notify delegate
+//     failure → notify failure
+// ---------------------------------------------------------------------------
+
+@implementation CPXCDataModelLoader : CPObject
+{
+    CPString _modelPath;
+    id       _delegate;
+    CPString _phase;
+    CPString _dataReceived;
+    int      _statusReceived;
+    CPString _pendingContentsURL; // used when waiting for bundle_version to resolve
+}
+
++ (CPXCDataModelLoader) loaderWithModelPath:(CPString)aModelPath
+                                   delegate:(id)aDelegate
+{
+    var loader = [[CPXCDataModelLoader alloc] init];
+    loader._modelPath = aModelPath;
+    loader._delegate  = aDelegate;
+    return loader;
+}
+
+- (void) start
+{
+    if ([_modelPath hasSuffix:@"xcdatamodeld"])
+    {
+        // .xcdatamodeld bundle: first try .xccurrentversion
+        [self _fetchURL:_modelPath + @"/.xccurrentversion"
+                  phase:@"bundle_version"];
+    }
+    else
+    {
+        // .xcdatamodel: try new XML contents first
+        [self _fetchURL:_modelPath + @"/contents"
+                  phase:@"new_xml_contents"];
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Private helpers
+// ---------------------------------------------------------------------------
+
+- (void) _fetchURL:(CPString)url phase:(CPString)phase
+{
+    _phase = phase;
+    _dataReceived = @"";
+    _statusReceived = 0;
+    var request = [CPURLRequest requestWithURL:url];
+    [CPURLConnection connectionWithRequest:request delegate:self];
+}
+
+- (void) _notifySuccess:(CPManagedObjectModel)model
+{
+    if ([_delegate respondsToSelector:@selector(managedObjectModelDidFinishLoading:)])
+        [_delegate managedObjectModelDidFinishLoading:model];
+}
+
+- (void) _notifyFailure
+{
+    CPLog.warn(@"CPXCDataModelLoader: could not load model at " + _modelPath);
+    if ([_delegate respondsToSelector:@selector(managedObjectModelDidFailToLoad:)])
+        [_delegate managedObjectModelDidFailToLoad:_modelPath];
+}
+
+// ---------------------------------------------------------------------------
+// CPURLConnection delegate
+// ---------------------------------------------------------------------------
+
+- (void) connection:(CPURLConnection)connection
+    didReceiveResponse:(CPHTTPURLResponse)response
+{
+    _statusReceived = [response statusCode];
+    _dataReceived   = @"";
+}
+
+- (void) connection:(CPURLConnection)connection
+      didReceiveData:(id)data
+{
+    _dataReceived = [_dataReceived stringByAppendingString:data];
+}
+
+- (void) connectionDidFinishLoading:(CPURLConnection)connection
+{
+    var ok = (_statusReceived == 200);
+
+    if (_phase === @"new_xml_contents")
+    {
+        if (ok && [CPManagedObjectModel _isXCDataModelXML:_dataReceived])
+        {
+            var model = [CPManagedObjectModel _parseContentsXML:_dataReceived];
+            [model setNameFromFilePath:_modelPath];
+            [self _notifySuccess:model];
+        }
+        else
+        {
+            // Fall back to old .cxcdatamodel format
+            var parts   = [_modelPath componentsSeparatedByString:@"."];
+            var oldPath = [parts objectAtIndex:0] + @".cxcdatamodel";
+            [self _fetchURL:oldPath phase:@"old_plist"];
+        }
+    }
+    else if (_phase === @"old_plist")
+    {
+        if (ok && _dataReceived !== nil && [_dataReceived length] > 0)
+        {
+            var plist = _dataReceived.replace(
+                            /\<key\>\s*CF\$UID\s*\<\/key\>/g,
+                            "<key>CP$UID</key>");
+            var unarchiver = [[CPKeyedUnarchiver alloc]
+                                    initForReadingWithData:[CPData dataWithRawString:plist]];
+            var model = [unarchiver decodeObjectForKey:@"root"];
+            [model setNameFromFilePath:_modelPath];
+            [self _notifySuccess:model];
+        }
+        else
+        {
+            [self _notifyFailure];
+        }
+    }
+    else if (_phase === @"bundle_version")
+    {
+        // Determine the active model name
+        var activeModelName = nil;
+        if (ok && _dataReceived !== nil)
+        {
+            var match = _dataReceived.match(
+                            /<key>_XCCurrentVersionName<\/key>\s*<string>([^<]+)<\/string>/);
+            if (match && match[1])
+            {
+                var versionParts = [match[1] componentsSeparatedByString:@"."];
+                activeModelName = [versionParts objectAtIndex:0];
+            }
+        }
+        if (activeModelName == nil)
+        {
+            // Fall back to the bundle base name
+            var dotParts  = [_modelPath componentsSeparatedByString:@"."];
+            var slashParts = [[dotParts objectAtIndex:0] componentsSeparatedByString:@"/"];
+            activeModelName = [slashParts lastObject];
+        }
+        var contentsURL = _modelPath + @"/" + activeModelName + @".xcdatamodel/contents";
+        [self _fetchURL:contentsURL phase:@"bundle_contents"];
+    }
+    else if (_phase === @"bundle_contents")
+    {
+        if (ok && [CPManagedObjectModel _isXCDataModelXML:_dataReceived])
+        {
+            var model = [CPManagedObjectModel _parseContentsXML:_dataReceived];
+            [model setNameFromFilePath:_modelPath];
+            [self _notifySuccess:model];
+        }
+        else
+        {
+            [self _notifyFailure];
+        }
+    }
+}
+
+- (void) connection:(CPURLConnection)connection
+   didFailWithError:(id)error
+{
+    CPLog.warn(@"CPXCDataModelLoader: network error in phase '" + _phase
+               + "' for " + _modelPath + ": " + error);
+
+    if (_phase === @"new_xml_contents")
+    {
+        // Network error for new-format attempt: fall back to old format
+        var parts   = [_modelPath componentsSeparatedByString:@"."];
+        var oldPath = [parts objectAtIndex:0] + @".cxcdatamodel";
+        [self _fetchURL:oldPath phase:@"old_plist"];
+    }
+    else if (_phase === @"bundle_version")
+    {
+        // .xccurrentversion not reachable — try default name
+        var dotParts   = [_modelPath componentsSeparatedByString:@"."];
+        var slashParts = [[dotParts objectAtIndex:0] componentsSeparatedByString:@"/"];
+        var defaultName = [slashParts lastObject];
+        var contentsURL = _modelPath + @"/" + defaultName + @".xcdatamodel/contents";
+        [self _fetchURL:contentsURL phase:@"bundle_contents"];
+    }
+    else
+    {
+        [self _notifyFailure];
+    }
+}
+
+@end
+
