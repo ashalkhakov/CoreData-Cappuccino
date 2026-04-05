@@ -4,7 +4,7 @@
 //  Created by Raphael Bartolome on 06.01.10.
 //
 
-@import "../CPRelationshipDescription.j"
+@import "CPRelationshipDescription.j"
 
 @implementation NSRelationshipDescription : CPRelationshipDescription
 {

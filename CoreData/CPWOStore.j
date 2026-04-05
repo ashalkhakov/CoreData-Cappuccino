@@ -5,7 +5,7 @@
 //
 
 @import <Foundation/Foundation.j>
-@import "../../CPPersistentStore.j"
+@import "CPPersistentStore.j"
 
 /*
  * configuration keys:

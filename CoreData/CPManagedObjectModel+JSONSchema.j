@@ -1,5 +1,5 @@
 @import <Foundation/Foundation.j>
-@import "../CPManagedObjectModel.j"
+@import "CPManagedObjectModel.j"
 
 function _loadFromURL(url)
 {
