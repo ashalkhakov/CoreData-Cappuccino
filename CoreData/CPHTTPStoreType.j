@@ -14,6 +14,7 @@
 //
 
 @import <Foundation/CPObject.j>
+@import "CPPersistentStoreType.j"
 
 CPHTTPStoreBaseURL             = @"CPHTTPStoreBaseURL";
 CPHTTPStoreTimeout             = @"CPHTTPStoreTimeout";

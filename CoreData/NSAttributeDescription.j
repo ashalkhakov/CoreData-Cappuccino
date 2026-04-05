@@ -4,6 +4,8 @@
 //  Created by Raphael Bartolome on 06.01.10.
 //
 
+@import "CPAttributeDescription.j"
+
 var xcprototypes = [
     0,         //NSUndefinedAttributeType
     100,     //NSInteger16AttributeType

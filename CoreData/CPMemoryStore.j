@@ -5,9 +5,9 @@
 //
 
 @import <Foundation/Foundation.j>
-@import "../../CPPersistentStoreType.j"
-@import "../../CPPersistentStore.j"
-@import "../../CPCoreDataCategories/CPManagedObject+CPCoreDataSerialization.j"
+@import "CPPersistentStoreType.j"
+@import "CPPersistentStore.j"
+@import "CPManagedObject+CPCoreDataSerialization.j"
 @import "CPMemoryStoreType.j"
 
 @implementation CPMemoryStore : CPPersistentStore

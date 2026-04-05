@@ -5,6 +5,9 @@
 //
 
 @import <Foundation/CPObject.j>
+@import "CPPersistentStoreType.j"
+
+@class CPMemoryStore;
 
 CPMemoryStoreConfigurationKeyResourcesFile = "CPMemoryStoreResourcesFile";
 CPMemoryStoreConfigurationKeyFileFormat = "CPMemoryDAVStoreFileFormat";

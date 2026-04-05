@@ -81,7 +81,7 @@ var path = require("path");
                                              withContext:context];
     [self assert:"{\"string1\":\"default for string1\",\"enum1\":\"tomorrow\",\"object1\":{\"attr1\":\"default for attr1\",\"transform\":\"untransformed\"},\"array1\":[]}"
           equals:[[CPData dataWithJSONObject:[obj JSONObject]] rawString]];
-};
+}
 
 -(void)testSerializeAsNList
 {

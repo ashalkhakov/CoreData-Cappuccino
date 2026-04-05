@@ -5,7 +5,7 @@
 //
 
 @import <Foundation/Foundation.j>
-@import "../../CPPersistentStoreType.j"
+@import "CPPersistentStoreType.j"
 
 CPHTML5StoreName = "CPHTML5StoreName";
 

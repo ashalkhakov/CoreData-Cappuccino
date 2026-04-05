@@ -10,7 +10,7 @@
 @import <Foundation/Foundation.j>
 
 @import "RLOfflineLocalStorage.j"
-
+@import "CPPersistentStore.j"
 
 @implementation CPHTML5Store : CPPersistentStore
 {

@@ -5,7 +5,9 @@
 //
 
 @import <Foundation/Foundation.j>
-@import "../../CPPersistentStoreType.j"
+@import "CPPersistentStoreType.j"
+
+@class CPWOStore;
 
 @implementation CPWOStoreType : CPPersistentStoreType
 {

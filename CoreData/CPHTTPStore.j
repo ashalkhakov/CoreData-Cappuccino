@@ -19,8 +19,8 @@
 //
 
 @import <Foundation/Foundation.j>
-@import "../../CPPersistentStore.j"
-@import "../../CPPersistentStoreType.j"
+@import "CPPersistentStore.j"
+@import "CPPersistentStoreType.j"
 @import "CPHTTPStoreType.j"
 @import "CPHTTPPredicateEncoder.j"
 

@@ -5,6 +5,9 @@
 //
 
 @import <Foundation/Foundation.j>
+@import "CPPersistentStoreType.j"
+
+@class CPWebDAVStore;
 
 CPWebDAVStoreConfigurationKeyBaseURL = "CPWebDAVStoreBaseURL";
 CPWebDAVStoreConfigurationKeyFilePath = "CPWebDAVStoreFilePath";
