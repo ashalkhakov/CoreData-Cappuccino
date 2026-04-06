@@ -16,7 +16,7 @@
 //
 
 @import <Foundation/Foundation.j>
-
+@import "CPManagedObjectModel.j"
 
 @implementation CPManagedObjectModel (XCDataModel)
 
