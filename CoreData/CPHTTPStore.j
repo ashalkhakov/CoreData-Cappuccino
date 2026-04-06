@@ -28,13 +28,6 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
 
 @implementation CPHTTPStore : CPPersistentStore
 {
-    // Transport state for our synchronous wrapper
-    CPURLConnection  _activeConnection;
-    int             _activeStatusCode;
-    id              _activeResponse;     // CPHTTPURLResponse (or CPURLResponse)
-    CPString        _activeResponseText;
-    BOOL            _activeDone;
-    id              _activeTransportError;
 }
 
 // - Configuration
@@ -422,17 +415,20 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     return resultSet;
 }
 
-// - HTTP transport (status-aware)
+// - HTTP transport
 
 /*!
-    POST JSON body to a URL and return a dictionary:
-        { statusCode: <int>, text: <string>, url: <string> }
+    POST a JSON body asynchronously.  Returns immediately; the completionHandler
+    is called from CPURLConnection delegate callbacks once the response arrives
+    (or the connection fails).
 
-    On transport-level failure (no response), sets *error and raises.
+    completionHandler signature:  function(httpDict, transportError)
+      httpDict       -- CPDictionary{ @"statusCode", @"text", @"url" } on success
+      transportError -- non-nil on transport-level failure (httpDict is nil)
 */
-- (CPDictionary)_postJSONAndReturnHTTPResult:(id)bodyDict
-                                      toURL:(CPString)urlString
-                                      error:(@ref)error
+- (void)_postJSONAsync:(id)bodyDict
+                 toURL:(CPString)urlString
+     completionHandler:(Function)handler
 {
     // Serialize body
     var jsonString;
@@ -442,15 +438,14 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     }
     catch (e)
     {
-        if (error)
-            @deref(error) = [self _cpErrorWithDomain:@"CPHTTPStore"
-                                                code:1001
-                                             message:@"JSON serialisation error"
-                                          httpStatus:0
-                                            apiError:nil
-                                            userInfo:@{ @"exception": String(e) }];
-        [self _raiseForError:error message:@"CPHTTPStore: JSON serialisation error"];
-        return nil;
+        var serErr = [self _cpErrorWithDomain:@"CPHTTPStore"
+                                         code:1001
+                                      message:@"JSON serialisation error"
+                                    httpStatus:0
+                                      apiError:nil
+                                      userInfo:@{ @"exception": String(e) }];
+        handler(nil, serErr);
+        return;
     }
 
     // Build request
@@ -462,65 +457,324 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     [req setValue:@"application/json" forHTTPHeaderField:@"Accept"];
     [req setHTTPBody:jsonString];
 
-    // Reset state
-    _activeConnection     = nil;
-    _activeStatusCode     = 0;
-    _activeResponse       = nil;
-    _activeResponseText   = [[CPString alloc] init];
-    _activeDone           = NO;
-    _activeTransportError = nil;
+    // Each request gets its own delegate object -- multiple concurrent requests
+    // are safe because per-request state is isolated in CPHTTPStoreRequest.
+    var storeReq = [CPHTTPStoreRequest requestWithURL:urlString
+                                    completionHandler:handler];
+    [CPURLConnection connectionWithRequest:req delegate:storeReq];
+}
 
-    // Fire async request
-    _activeConnection = [CPURLConnection connectionWithRequest:req delegate:self];
+/*!
+    Synchronous wrapper around _postJSONAsync:toURL:completionHandler:.
 
-    // "Synchronous" wait: spin run loop until delegate marks done
+    @deprecated  In browser environments this BLOCKS the run loop (freezes UI).
+                 Use executeFetchRequestAsync:inManagedObjectContext:completionHandler:
+                 or saveObjectsUpdated:inserted:deleted:inManagedObjectContext:completionHandler:
+                 instead.
+
+    Retained for backward compatibility with code that calls the synchronous
+    CPPersistentStore protocol (executeFetchRequest:inManagedObjectContext:error:,
+    saveObjectsUpdated:inserted:deleted:inManagedObjectContext:error:).
+*/
+- (CPDictionary)_postJSONAndReturnHTTPResult:(id)bodyDict
+                                       toURL:(CPString)urlString
+                                       error:(@ref)error
+{
+    var done           = NO,
+        httpResult     = nil,
+        transportErr   = nil;
+
+    [self _postJSONAsync:bodyDict toURL:urlString completionHandler:function(http, err) {
+        httpResult   = http;
+        transportErr = err;
+        done = YES;
+    }];
+
+    // Spin the run loop until the async response arrives.
+    // WARNING: This blocks the browser's rendering pipeline.
+    // Prefer the async API for browser-hosted apps.
     var runLoop = [CPRunLoop currentRunLoop];
-    while (!_activeDone)
+    while (!done)
         [runLoop limitDateForMode:CPDefaultRunLoopMode];
 
-    // Transport failure?
-    if (_activeTransportError !== nil)
+    if (transportErr !== nil)
     {
         if (error)
-            error = [self _cpErrorWithDomain:@"CPHTTPStore"
-                                        code:1002
-                                     message:@"Transport error"
-                                   httpStatus:0
-                                    apiError:nil
-                                    userInfo:@{ @"transportError": _activeTransportError,
-                                                @"url": urlString }];
-        [self _raiseForError:error message:@"CPHTTPStore: transport error"];
+            @deref(error) = [self _cpErrorWithDomain:@"CPHTTPStore"
+                                                code:1002
+                                             message:@"Transport error"
+                                           httpStatus:0
+                                             apiError:nil
+                                             userInfo:@{ @"transportError": transportErr,
+                                                         @"url": urlString }];
+        [self _raiseForError:nil message:@"CPHTTPStore: transport error"];
         return nil;
     }
 
-    return [CPDictionary dictionaryWithObjectsAndKeys:
-                _activeStatusCode, @"statusCode",
-                [CPString stringWithString:_activeResponseText], @"text",
-                urlString, @"url"];
+    return httpResult;
 }
 
-- (void)connection:(CPURLConnection)connection didReceiveResponse:(CPHTTPURLResponse)response
+/*!
+    Parse an OrdersAPI HTTP response without raising an exception.
+    Error information is returned through the outError CPMutableDictionary
+    (key @"error" is set to a CPError on failure).
+
+    Returns the parsed JS object on success, nil on any error.
+    Safe to call from inside JavaScript closures (no @ref across closure
+    boundaries).
+*/
+- (id)_parseResponseNoRaise:(CPDictionary)http
+                     action:(CPString)action
+                   outError:(CPMutableDictionary)outErr
 {
-    _activeResponse = response;
-    _activeStatusCode = [response respondsToSelector:@selector(statusCode)] ? [response statusCode] : 0;
+    var localError = nil,
+        errRef     = @ref(localError),
+        parsed     = nil;
+    try
+    {
+        parsed = [self _parseOrdersAPIResponseFromHTTP:http action:action error:errRef];
+    }
+    catch (e)
+    {
+        if (localError === nil && [e respondsToSelector:@selector(userInfo)])
+            localError = [[e userInfo] objectForKey:@"error"];
+        if (localError === nil)
+            localError = [self _cpErrorWithDomain:@"CPHTTPStore"
+                                             code:1200
+                                          message:@"Unexpected store error"
+                                        httpStatus:0
+                                          apiError:nil
+                                          userInfo:nil];
+        if (outErr)
+            [outErr setObject:localError forKey:@"error"];
+        return nil;
+    }
+    if (outErr && localError !== nil)
+        [outErr setObject:localError forKey:@"error"];
+    return parsed;
 }
 
-- (void)connection:(CPURLConnection)connection didReceiveData:(id)data
+// - Async fetch
+
+/*!
+    Non-blocking counterpart of executeFetchRequest:inManagedObjectContext:error:.
+    Fires the HTTP request and returns immediately; the completionHandler is
+    called once the response arrives.
+
+    completionHandler signature:  function(resultSet CPSet, error CPError)
+*/
+- (void)executeFetchRequestAsync:(CPFetchRequest)request
+          inManagedObjectContext:(CPManagedObjectContext)context
+               completionHandler:(Function)handler
 {
-    // data is a string for CPURLConnection in this runtime
-    if (data !== nil)
-        [_activeResponseText appendString:data];
+    var body  = [self _buildFetchBody:request],
+        self_ = self;
+
+    [self _postJSONAsync:body toURL:[self _cdFetchURL] completionHandler:function(http, transportError) {
+        if (transportError !== nil || http === nil)
+        {
+            handler([CPSet new], transportError);
+            return;
+        }
+
+        var outErr = [CPMutableDictionary dictionary],
+            parsed = [self_ _parseResponseNoRaise:http action:@"cdFetch" outError:outErr];
+
+        if (parsed === nil)
+        {
+            handler([CPSet new], [outErr objectForKey:@"error"]);
+            return;
+        }
+
+        // count result type
+        if (parsed.count !== undefined)
+        {
+            var countObj = [[CPManagedObject alloc] init];
+            [countObj _setData:[CPDictionary dictionaryWithObject:parsed.count forKey:@"count"]];
+            handler([CPSet setWithObject:countObj], nil);
+            return;
+        }
+
+        var rootIDs     = parsed.root        || [],
+            objectsByID = parsed.objectsByID || {},
+            onlyIDs     = [request transparentFetch];
+
+        // IDs-only mode
+        if (onlyIDs || !parsed.objectsByID)
+        {
+            var resultSet = [[CPMutableSet alloc] init];
+            for (var i = 0; i < rootIDs.length; i++)
+            {
+                var faultObj = [self_ _faultObjectForServerID:rootIDs[i] context:context];
+                if (faultObj !== nil)
+                    [resultSet addObject:faultObj];
+            }
+            handler(resultSet, nil);
+            return;
+        }
+
+        // Full graph materialisation
+        var allMaterialized = [[CPMutableDictionary alloc] init];
+        for (var globalIDKey in objectsByID)
+        {
+            if (!objectsByID.hasOwnProperty(globalIDKey)) continue;
+            var matObj = [self_ _materializeServerObject:objectsByID[globalIDKey] context:context];
+            if (matObj !== nil)
+                [allMaterialized setObject:matObj forKey:globalIDKey];
+        }
+        for (var globalIDKey in objectsByID)
+        {
+            if (!objectsByID.hasOwnProperty(globalIDKey)) continue;
+            var matObj = [allMaterialized objectForKey:globalIDKey];
+            if (matObj === nil) continue;
+            [self_ _applyRelationships:(objectsByID[globalIDKey].relationships || {})
+                              toObject:matObj
+                       allMaterialized:allMaterialized
+                               context:context];
+        }
+
+        var resultSet = [[CPMutableSet alloc] init];
+        for (var i = 0; i < rootIDs.length; i++)
+        {
+            var key = [self_ _globalIDStringForServerID:rootIDs[i]],
+                obj = [allMaterialized objectForKey:key];
+            if (obj === nil)
+                obj = [self_ _faultObjectForServerID:rootIDs[i] context:context];
+            if (obj !== nil)
+                [resultSet addObject:obj];
+        }
+        handler(resultSet, nil);
+    }];
 }
 
-- (void)connectionDidFinishLoading:(CPURLConnection)connection
-{
-    _activeDone = YES;
-}
+// - Async save
 
-- (void)connection:(CPURLConnection)connection didFailWithError:(id)err
+/*!
+    Non-blocking counterpart of saveObjectsUpdated:inserted:deleted:inManagedObjectContext:error:.
+    Fires the HTTP request and returns immediately; the completionHandler is
+    called once the response arrives.
+
+    completionHandler signature:  function(resultSet CPSet, error CPError)
+*/
+- (void)saveObjectsUpdated:(CPSet)updatedObjects
+                  inserted:(CPSet)insertedObjects
+                   deleted:(CPSet)deletedObjects
+    inManagedObjectContext:(CPManagedObjectContext)context
+         completionHandler:(Function)handler
 {
-    _activeTransportError = err;
-    _activeDone = YES;
+    var insertedArray = [[CPMutableArray alloc] init],
+        updatedArray  = [[CPMutableArray alloc] init],
+        deletedArray  = [[CPMutableArray alloc] init];
+
+    var ie = [insertedObjects objectEnumerator],
+        obj;
+    while ((obj = [ie nextObject]))
+        [insertedArray addObject:[self _encodeObjectForInsert:obj]];
+
+    var ue = [updatedObjects objectEnumerator];
+    while ((obj = [ue nextObject]))
+        [updatedArray addObject:[self _encodeObjectForUpdate:obj]];
+
+    var de = [deletedObjects objectEnumerator];
+    while ((obj = [de nextObject]))
+    {
+        var objID = [obj objectID];
+        if ([objID validatedGlobalID])
+            [deletedArray addObject:[CPDictionary dictionaryWithObject:
+                                         [self _serverIDForObjectID:objID]
+                                                               forKey:@"id"]];
+    }
+
+    var body  = [CPDictionary dictionaryWithObjectsAndKeys:
+                     insertedArray, @"inserted",
+                     updatedArray,  @"updated",
+                     deletedArray,  @"deleted",
+                     [CPDictionary dictionaryWithObjectsAndKeys:
+                          YES, @"inserted",
+                          NO,  @"updated",
+                          YES, @"includeRelationships"], @"return"],
+        self_ = self;
+
+    [self _postJSONAsync:body toURL:[self _cdSaveURL] completionHandler:function(http, transportError) {
+        if (transportError !== nil || http === nil)
+        {
+            handler([CPSet new], transportError);
+            return;
+        }
+
+        var outErr = [CPMutableDictionary dictionary],
+            parsed = [self_ _parseResponseNoRaise:http action:@"cdSave" outError:outErr];
+
+        if (parsed === nil)
+        {
+            handler([CPSet new], [outErr objectForKey:@"error"]);
+            return;
+        }
+
+        var resultSet = [[CPMutableSet alloc] init],
+            idMap     = parsed.idMap || {};
+
+        // Apply idMap: update temp IDs to permanent IDs
+        var ie2 = [insertedObjects objectEnumerator];
+        while ((obj = [ie2 nextObject]))
+        {
+            var tempKey = [self_ _tempKeyForObject:obj];
+            if (tempKey && idMap[tempKey])
+            {
+                var serverID    = idMap[tempKey],
+                    newGlobalID = [self_ _globalIDStringForServerID:serverID];
+                [[obj objectID] setGlobalID:newGlobalID];
+                [[obj objectID] setIsTemporary:NO];
+            }
+            [resultSet addObject:obj];
+        }
+
+        // Update object version numbers
+        var versions = parsed.versions || [];
+        for (var i = 0; i < versions.length; i++)
+        {
+            var vEntry    = versions[i],
+                vGlobal   = [self_ _globalIDStringForServerID:vEntry.id],
+                vSearchID = [[CPManagedObjectID alloc] initWithEntity:nil
+                                                             globalID:vGlobal
+                                                          isTemporary:NO],
+                regObj    = [context objectRegisteredForID:vSearchID];
+            if (regObj !== nil)
+                [[regObj data] setObject:vEntry.version forKey:@"version"];
+        }
+
+        // Materialise objects returned by return.inserted / return.updated
+        var returnedObjects = parsed.objects || [],
+            allMaterialized = [[CPMutableDictionary alloc] init];
+
+        for (var i = 0; i < returnedObjects.length; i++)
+        {
+            var serverObj = returnedObjects[i],
+                matObj    = [self_ _materializeServerObject:serverObj context:context];
+            if (matObj !== nil)
+            {
+                var gKey = [self_ _globalIDStringForServerID:(serverObj.id || serverObj[@"id"])];
+                [allMaterialized setObject:matObj forKey:gKey];
+                [resultSet addObject:matObj];
+            }
+        }
+
+        for (var i = 0; i < returnedObjects.length; i++)
+        {
+            var serverObj = returnedObjects[i],
+                gKey      = [self_ _globalIDStringForServerID:(serverObj.id || serverObj[@"id"])],
+                matObj    = [allMaterialized objectForKey:gKey];
+            if (matObj === nil) continue;
+            [self_ _applyRelationships:(serverObj.relationships || {})
+                              toObject:matObj
+                       allMaterialized:allMaterialized
+                               context:context];
+        }
+
+        [resultSet unionSet:updatedObjects];
+        [resultSet unionSet:deletedObjects];
+        handler(resultSet, nil);
+    }];
 }
 
 /*!
@@ -1245,6 +1499,79 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         return [obj doubleValue];
 
     return obj;
+}
+
+@end
+
+
+// ---------------------------------------------------------------------------
+// CPHTTPStoreRequest
+//
+// Per-request state holder that acts as its own CPURLConnection delegate.
+// Decoupling per-request state from the store lets multiple requests be
+// dispatched concurrently without clobbering each other.
+//
+// completionHandler signature:  function(httpDict, transportError)
+//   httpDict       — CPDictionary{ @"statusCode", @"text", @"url" } on success
+//   transportError — non-nil on transport-level failure (httpDict is nil)
+// ---------------------------------------------------------------------------
+
+@implementation CPHTTPStoreRequest : CPObject
+{
+    CPString _requestURL;
+    Function _completionHandler;
+    int      _statusCode;
+    CPString _responseText;
+}
+
++ (CPHTTPStoreRequest)requestWithURL:(CPString)url
+                   completionHandler:(Function)handler
+{
+    var r              = [[CPHTTPStoreRequest alloc] init];
+    r._requestURL      = url;
+    r._completionHandler = handler;
+    r._statusCode      = 0;
+    r._responseText    = @"";
+    return r;
+}
+
+- (void)connection:(CPURLConnection)connection
+    didReceiveResponse:(CPHTTPURLResponse)response
+{
+    _statusCode   = [response respondsToSelector:@selector(statusCode)] ? [response statusCode] : 0;
+    _responseText = @"";
+}
+
+- (void)connection:(CPURLConnection)connection
+      didReceiveData:(id)data
+{
+    if (data !== nil)
+        [_responseText appendString:data];
+}
+
+- (void)connectionDidFinishLoading:(CPURLConnection)connection
+{
+    if (_completionHandler)
+    {
+        _completionHandler(
+            [CPDictionary dictionaryWithObjectsAndKeys:
+                 _statusCode,                                   @"statusCode",
+                 [CPString stringWithString:_responseText],     @"text",
+                 _requestURL,                                   @"url"],
+            nil
+        );
+        _completionHandler = nil;
+    }
+}
+
+- (void)connection:(CPURLConnection)connection
+   didFailWithError:(id)error
+{
+    if (_completionHandler)
+    {
+        _completionHandler(nil, error);
+        _completionHandler = nil;
+    }
 }
 
 @end

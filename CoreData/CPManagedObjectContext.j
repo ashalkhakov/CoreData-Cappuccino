@@ -17,6 +17,8 @@
 @public
 - (CPArray) executeFetchRequest:(CPFetchRequest)aFetchRequest;
 - (CPArray) executeStoreFetchRequest:(CPFetchRequest)aFetchRequest;
+- (void) executeStoreFetchRequestAsync:(CPFetchRequest)aFetchRequest completionHandler:(Function)handler;
+- (void) saveChangesWithCompletionHandler:(Function)handler;
 
 @private
 - (CPSet) _executeLocalFetchRequest:(CPFetchRequest) aFetchRequest;
@@ -198,6 +200,63 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     return resultArray;
 }
 
+/*!
+    Async counterpart of executeStoreFetchRequest:.
+
+    If the store implements executeFetchRequestAsync:inManagedObjectContext:completionHandler:,
+    uses that so the browser UI is not blocked.  Otherwise falls back to the
+    synchronous store fetch path (suitable for in-memory or other fast stores).
+
+    Fires CPManagedObjectContextDidLoadObjectsNotification when complete.
+
+    @param request  The fetch request.
+    @param handler  JS function(results CPArray, error CPError).
+                    results is a CPArray (empty on error).
+                    Pass nil if you only need the notification.
+*/
+- (void)executeStoreFetchRequestAsync:(CPFetchRequest)aFetchRequest
+                    completionHandler:(Function)handler
+{
+    var self_ = self;
+
+    if ([[self store] respondsToSelector:@selector(executeFetchRequestAsync:inManagedObjectContext:completionHandler:)])
+    {
+        [[self store] executeFetchRequestAsync:aFetchRequest
+                        inManagedObjectContext:self
+                             completionHandler:function(resultSet, error) {
+            var resultArray = [[CPMutableArray alloc] init];
+            if (resultSet !== nil && error === nil)
+            {
+                var transparent = [aFetchRequest transparentFetch],
+                    objectEnum  = [resultSet objectEnumerator],
+                    obj;
+                while ((obj = [objectEnum nextObject]))
+                {
+                    if (transparent)
+                        [resultArray addObject:obj];
+                    else
+                        [resultArray addObject:[self_ _registerFetchedObject:obj]];
+                }
+            }
+            [[CPNotificationCenter defaultCenter]
+                postNotificationName:CPManagedObjectContextDidLoadObjectsNotification
+                              object:self_
+                            userInfo:nil];
+            if (handler) handler(resultArray, error);
+        }];
+    }
+    else
+    {
+        // Sync fallback for stores that don't implement the async API
+        var resultArray = [self executeStoreFetchRequest:aFetchRequest];
+        [[CPNotificationCenter defaultCenter]
+            postNotificationName:CPManagedObjectContextDidLoadObjectsNotification
+                          object:self
+                        userInfo:nil];
+        if (handler) handler(resultArray || [], nil);
+    }
+}
+
 - (CPSet) _executeLocalFetchRequest:(CPFetchRequest) aFetchRequest
 {
     var resultArray = [[CPMutableArray alloc] init];
@@ -363,6 +422,95 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
         result = [self saveAll];
     }
     return result;
+}
+
+/*!
+    Async counterpart of saveChanges:.
+
+    If the store implements
+      saveObjectsUpdated:inserted:deleted:inManagedObjectContext:completionHandler:
+    uses that so the browser UI is not blocked.  Otherwise falls back to the
+    synchronous save path.
+
+    Fires CPManagedObjectContextDidSaveNotification and
+    CPManagedObjectContextDidSaveChangedObjectsNotification on success.
+
+    @param handler  JS function(success BOOL, error CPError).
+                    Pass nil if you only need the notification.
+*/
+- (void)saveChangesWithCompletionHandler:(Function)handler
+{
+    if (![self hasChanges])
+    {
+        if (handler) handler(YES, nil);
+        return;
+    }
+
+    if (![[self store] respondsToSelector:@selector(saveObjectsUpdated:inserted:deleted:inManagedObjectContext:completionHandler:)])
+    {
+        // Sync fallback for stores that don't implement the async API
+        var syncError = nil;
+        var result = [self saveChanges:@ref(syncError)];
+        if (handler) handler(result, syncError);
+        return;
+    }
+
+    var self_            = self,
+        updatedObjects   = [self updatedObjects],
+        insertedObjects  = [self insertedObjects],
+        deletedObjects   = [self deletedObjects],
+        allSavingObjects = [[CPMutableSet alloc] init];
+
+    [allSavingObjects unionSet:updatedObjects];
+    [allSavingObjects unionSet:insertedObjects];
+    [allSavingObjects unionSet:deletedObjects];
+
+    [self _validateUpdatedObject:updatedObjects
+                 insertedObjects:insertedObjects];
+
+    [[allSavingObjects allObjects] makeObjectsPerformSelector:@selector(willSave)];
+
+    [[self store] saveObjectsUpdated:updatedObjects
+                            inserted:insertedObjects
+                             deleted:deletedObjects
+              inManagedObjectContext:self
+                   completionHandler:function(resultSet, saveError) {
+        if (saveError !== nil)
+        {
+            if (handler) handler(NO, saveError);
+            return;
+        }
+
+        // Apply ID remapping from server
+        if (resultSet && [resultSet count] > 0)
+        {
+            var objectsEnum = [resultSet objectEnumerator],
+                obj;
+            while ((obj = [objectsEnum nextObject]))
+            {
+                var registeredObject = [self_ objectRegisteredForID:[obj objectID]];
+                if (registeredObject !== nil)
+                {
+                    [[registeredObject objectID] setGlobalID:[[obj objectID] globalID]];
+                    [[registeredObject objectID] setIsTemporary:[[obj objectID] isTemporary]];
+                }
+            }
+        }
+
+        [[allSavingObjects allObjects] makeObjectsPerformSelector:@selector(didSave)];
+        [self_ reset];
+
+        [[CPNotificationCenter defaultCenter]
+            postNotificationName:CPManagedObjectContextDidSaveNotification
+                          object:self_
+                        userInfo:nil];
+        [[CPNotificationCenter defaultCenter]
+            postNotificationName:CPManagedObjectContextDidSaveChangedObjectsNotification
+                          object:self_
+                        userInfo:nil];
+
+        if (handler) handler(YES, nil);
+    }];
 }
 
 
