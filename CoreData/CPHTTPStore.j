@@ -499,15 +499,16 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
 
     if (transportErr !== nil)
     {
+        var cpErr = [self _cpErrorWithDomain:@"CPHTTPStore"
+                                        code:1002
+                                     message:@"Transport error"
+                                   httpStatus:0
+                                     apiError:nil
+                                     userInfo:@{ @"transportError": transportErr,
+                                                 @"url": urlString }];
         if (error)
-            @deref(error) = [self _cpErrorWithDomain:@"CPHTTPStore"
-                                                code:1002
-                                             message:@"Transport error"
-                                           httpStatus:0
-                                             apiError:nil
-                                             userInfo:@{ @"transportError": transportErr,
-                                                         @"url": urlString }];
-        [self _raiseForError:nil message:@"CPHTTPStore: transport error"];
+            @deref(error) = cpErr;
+        [self _raiseForError:cpErr message:@"CPHTTPStore: transport error"];
         return nil;
     }
 
@@ -1531,7 +1532,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     r._requestURL      = url;
     r._completionHandler = handler;
     r._statusCode      = 0;
-    r._responseText    = @"";
+    r._responseText    = [[CPString alloc] init];
     return r;
 }
 
@@ -1539,7 +1540,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     didReceiveResponse:(CPHTTPURLResponse)response
 {
     _statusCode   = [response respondsToSelector:@selector(statusCode)] ? [response statusCode] : 0;
-    _responseText = @"";
+    _responseText = [[CPString alloc] init];
 }
 
 - (void)connection:(CPURLConnection)connection
