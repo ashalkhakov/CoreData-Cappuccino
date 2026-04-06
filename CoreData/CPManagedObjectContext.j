@@ -345,7 +345,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
         var saveError = nil;
         var success = [self saveChanges:@ref(saveError)];
         if (error) @deref(error) = saveError;
-        return @(success);
+        return success;
     }
 
     CPLog.warn("CPManagedObjectContext -executeRequest:error: unrecognised requestType " + type);
