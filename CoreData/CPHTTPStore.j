@@ -1547,7 +1547,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
       didReceiveData:(id)data
 {
     if (data !== nil)
-        [_responseText appendString:data];
+        _responseText = [_responseText stringByAppendingString:data];
 }
 
 - (void)connectionDidFinishLoading:(CPURLConnection)connection
