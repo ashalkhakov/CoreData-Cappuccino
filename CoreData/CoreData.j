@@ -8,6 +8,8 @@
 
 @import "CPPersistentStore.j"
 @import "CPPersistentStoreType.j"
+@import "CPPersistentStoreRequest.j"
+@import "CPPersistentStoreResult.j"
 @import "CPPersistentStoreCoordinator.j"
 @import "CPManagedObjectContext.j"
 
@@ -20,6 +22,8 @@
 @import "CPFetchedPropertyDescription.j"
 @import "CPFetchRequest.j"
 @import "CPFetchRequestTemplates.j"
+@import "CPAsynchronousFetchRequest.j"
+@import "CPAsynchronousFetchResult.j"
 
 @import "CPCoreDataCategories.j"
 @import "CPCoreDataJSONSchema.j"

@@ -10,6 +10,9 @@
 @import "CPManagedObjectModel.j"
 @import "CPPersistentStore.j"
 @import "CPPersistentStoreCoordinator.j"
+@import "CPPersistentStoreRequest.j"
+@import "CPAsynchronousFetchRequest.j"
+@import "CPAsynchronousFetchResult.j"
 
 /*
 
@@ -255,6 +258,98 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
                         userInfo:nil];
         if (handler) handler(resultArray || [], nil);
     }
+}
+
+/*!
+    Schedule a block to run asynchronously on the context's queue.
+
+    Mirrors NSManagedObjectContext -perform:.
+
+    In the single-threaded browser environment the block is deferred to the
+    next run-loop turn via a zero-delay timer so that the calling stack has
+    fully unwound before the block executes.
+
+    @param block  A zero-argument JS function to execute.
+*/
+- (void)perform:(Function)block
+{
+    if (block)
+        window.setTimeout(block, 0);
+}
+
+/*!
+    Execute a block synchronously on the context's queue.
+
+    Mirrors NSManagedObjectContext -performAndWait:.
+
+    In the single-threaded browser environment this is equivalent to calling
+    the block immediately.
+
+    @param block  A zero-argument JS function to execute.
+*/
+- (void)performAndWait:(Function)block
+{
+    if (block)
+        block();
+}
+
+/*!
+    Execute a persistent-store request.
+
+    Mirrors NSManagedObjectContext -executeRequest:error:.
+
+    Supported request types:
+    - CPAsynchronousFetchRequestType: fires an async fetch and delivers the
+      result to the request's completionBlock.  Returns an empty
+      CPAsynchronousFetchResult immediately (finalResult will be nil until
+      the completion block is called).
+    - CPFetchRequestType: performs a synchronous fetch and returns a CPArray.
+    - CPSaveRequestType: performs a synchronous save and returns @(YES/NO).
+
+    @param request  A CPPersistentStoreRequest (or subclass) instance.
+    @param error    On return, if an error occurred this ref is set to a
+                    CPError describing the problem.
+    @return The result of the operation, or nil on failure.
+*/
+- (id)executeRequest:(CPPersistentStoreRequest)request
+               error:(@ref)error
+{
+    var type = [request requestType];
+
+    if (type === CPAsynchronousFetchRequestType)
+    {
+        var asyncRequest = request,
+            innerFetch   = [asyncRequest fetchRequest],
+            result       = [[CPAsynchronousFetchResult alloc] init];
+
+        [result setFetchRequest:asyncRequest];
+        [result setFinalResult:nil];
+
+        [self executeStoreFetchRequestAsync:innerFetch
+                          completionHandler:function(resultArray, fetchError) {
+            [result setFinalResult:(fetchError === nil ? resultArray : nil)];
+
+            var completionBlock = [asyncRequest completionBlock];
+            if (completionBlock)
+                completionBlock(result);
+        }];
+
+        return result;
+    }
+    else if (type === CPFetchRequestType)
+    {
+        return [self executeFetchRequest:request error:error];
+    }
+    else if (type === CPSaveRequestType)
+    {
+        var saveError = nil;
+        var success = [self saveChanges:@ref(saveError)];
+        if (error) @deref(error) = saveError;
+        return @(success);
+    }
+
+    CPLog.warn("CPManagedObjectContext -executeRequest:error: unrecognised requestType " + type);
+    return nil;
 }
 
 - (CPSet) _executeLocalFetchRequest:(CPFetchRequest) aFetchRequest
