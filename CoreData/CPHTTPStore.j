@@ -1179,10 +1179,8 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         obj = existing;
     else
     {
-        obj = [[CPManagedObject alloc] init];
-        [obj setEntity:entity];
+        obj = [entity createObject];
         [obj setContext:context];
-        [obj _resetObjectDataForProperties];
         var objID = [[CPManagedObjectID alloc] initWithEntity:entity
                                                      globalID:globalID
                                                   isTemporary:NO];
@@ -1226,15 +1224,13 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     if (existing !== nil)
         return existing;
 
-    var obj   = [[CPManagedObject alloc] init];
+    var obj   = [entity createObject];
     var objID = [[CPManagedObjectID alloc] initWithEntity:entity
                                                  globalID:globalID
                                               isTemporary:NO];
     [objID setStore:self];
     [obj setObjectID:objID];
-    [obj setEntity:entity];
     [obj setContext:context];
-    [obj _resetObjectDataForProperties];
     [obj setFault:YES];
     return obj;
 }
