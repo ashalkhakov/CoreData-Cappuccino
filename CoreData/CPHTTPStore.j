@@ -1082,7 +1082,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
 {
     var entity, pk;
 
-    if ([serverID isKindOfClass:[CPDictionary class]])
+    if (serverID && serverID.isa && [serverID isKindOfClass:[CPDictionary class]])
     {
         entity = [serverID objectForKey:@"entity"] || @"";
         pk     = [serverID objectForKey:@"pk"]     || {};
@@ -1093,7 +1093,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         pk     = serverID.pk     || {};
     }
 
-    if ([pk isKindOfClass:[CPDictionary class]])
+    if (pk && pk.isa && [pk isKindOfClass:[CPDictionary class]])
     {
         var keys  = [[pk allKeys] sortedArrayUsingSelector:@selector(compare:)],
             parts = [];
