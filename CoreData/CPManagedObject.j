@@ -8,6 +8,7 @@
 @import "CPEntityDescription.j"
 @import "CPManagedObjectContext.j"
 @import "CPManagedObjectID.j"
+@import "CPRelationshipDescription.j"
 
 @class CPRelationshipDescription;
 @class CPEntityDescription;
@@ -845,8 +846,18 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
     while ((property = [e nextObject]) != nil)
     {
         var propName = [property name];
-        //@TODO nil is no longer supported as object
-        var value = [property defaultValue];
+        var value;
+        if ([property isKindOfClass:[CPRelationshipDescription class]])
+        {
+            // relationships have no defaultValue; use nil for to-one and an
+            // empty array for to-many
+            value = [property isToMany] ? [] : nil;
+        }
+        else
+        {
+            //@TODO nil is no longer supported as object
+            value = [property defaultValue];
+        }
         //value = [[self entity] transformValue:value
         //                          forProperty:propName];
         [_data setObject:value forKey:propName];
