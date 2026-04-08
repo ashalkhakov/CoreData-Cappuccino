@@ -113,6 +113,12 @@ CPFetchedResultsChangeUpdate = 4;
     CPMutableArray          _fetchedObjects;
     CPMutableArray          _sections;
     BOOL                    _hasFetched;
+
+    // Tracks objects inserted into the context but not yet saved.  Update
+    // notifications for these objects are handled silently (re-sort only,
+    // no delegate callbacks) because the initial insert callback already
+    // covers the logical "one insert" operation.
+    CPMutableSet            _recentlyInserted;
 }
 
 // ---------------------------------------------------------------------------
@@ -144,11 +150,18 @@ CPFetchedResultsChangeUpdate = 4;
         _hasFetched           = NO;
         _fetchedObjects       = nil;
         _sections             = nil;
+        _recentlyInserted     = [[CPMutableSet alloc] init];
 
         [[CPNotificationCenter defaultCenter]
             addObserver:self
                selector:@selector(_contextObjectsDidChange:)
                    name:CPManagedObjectContextObjectsDidChangeNotification
+                 object:_managedObjectContext];
+
+        [[CPNotificationCenter defaultCenter]
+            addObserver:self
+               selector:@selector(_contextDidSave:)
+                   name:CPManagedObjectContextDidSaveNotification
                  object:_managedObjectContext];
     }
     return self;
@@ -159,6 +172,10 @@ CPFetchedResultsChangeUpdate = 4;
     [[CPNotificationCenter defaultCenter]
         removeObserver:self
                   name:CPManagedObjectContextObjectsDidChangeNotification
+                object:_managedObjectContext];
+    [[CPNotificationCenter defaultCenter]
+        removeObserver:self
+                  name:CPManagedObjectContextDidSaveNotification
                 object:_managedObjectContext];
     [super dealloc];
 }
@@ -306,9 +323,10 @@ CPFetchedResultsChangeUpdate = 4;
 
     // ---- Classify objects --------------------------------------------------
 
-    var toInsert = [[CPMutableArray alloc] init]; // objects to add to results
-    var toDelete = [[CPMutableArray alloc] init]; // objects to remove
-    var toUpdate = [[CPMutableArray alloc] init]; // already tracked, may move
+    var toInsert       = [[CPMutableArray alloc] init]; // objects to add to results
+    var toDelete       = [[CPMutableArray alloc] init]; // objects to remove
+    var toUpdate       = [[CPMutableArray alloc] init]; // already tracked, may move
+    var toSilentUpdate = [[CPMutableArray alloc] init]; // updates for recently-inserted (unsaved) objects
 
     // Newly inserted objects in context that now match the predicate
     var insEnum = [inserted objectEnumerator];
@@ -332,7 +350,14 @@ CPFetchedResultsChangeUpdate = 4;
         else if (trackedIdx === CPNotFound && matches)
             [toInsert addObject:obj];   // now satisfies predicate
         else if (trackedIdx !== CPNotFound && matches)
-            [toUpdate addObject:obj];   // still in results, may have moved
+        {
+            // If this object was inserted but not yet saved, re-sort silently
+            // instead of firing extra willChange/didChange cycles.
+            if ([_recentlyInserted containsObject:obj])
+                [toSilentUpdate addObject:obj];
+            else
+                [toUpdate addObject:obj];   // still in results, may have moved
+        }
     }
 
     // Deleted objects that were in our results
@@ -341,6 +366,26 @@ CPFetchedResultsChangeUpdate = 4;
     {
         if ([_fetchedObjects indexOfObject:obj] !== CPNotFound)
             [toDelete addObject:obj];
+    }
+
+    // ---- Handle silent re-sorts for recently-inserted objects ---------------
+    // These are attribute-only changes on objects we inserted in this session
+    // (before save).  We keep _fetchedObjects sorted but don't notify the
+    // delegate — the original insert notification already covered them.
+    for (var i = 0; i < [toSilentUpdate count]; i++)
+    {
+        var silentObj   = [toSilentUpdate objectAtIndex:i];
+        var desiredIdx  = [self _sortedInsertionIndexForObject:silentObj
+                                             usingDescriptors:[_fetchRequest sortDescriptors]
+                                                       inArray:_fetchedObjects
+                                             excludingObject:silentObj];
+        var currentIdx  = [_fetchedObjects indexOfObject:silentObj];
+        if (desiredIdx !== currentIdx)
+        {
+            [_fetchedObjects removeObjectAtIndex:currentIdx];
+            var insertIdx = (desiredIdx > currentIdx) ? desiredIdx - 1 : desiredIdx;
+            [_fetchedObjects insertObject:silentObj atIndex:insertIdx];
+        }
     }
 
     // Nothing to do?
@@ -371,6 +416,7 @@ CPFetchedResultsChangeUpdate = 4;
         var delObj = [deletesSorted objectAtIndex:i];
         var oldIP  = [self indexPathForObject:delObj];
         [self _removeObjectFromFetchedObjects:delObj];
+        [_recentlyInserted removeObject:delObj];
         if (   _delegate
             && [_delegate respondsToSelector:@selector(controller:didChangeObject:atIndexPath:forChangeType:newIndexPath:)]
            )
@@ -387,6 +433,7 @@ CPFetchedResultsChangeUpdate = 4;
     {
         var insObj = [toInsert objectAtIndex:i];
         [self _insertObjectIntoFetchedObjects:insObj];
+        [_recentlyInserted addObject:insObj];
         var newIP = [self indexPathForObject:insObj];
         if (   _delegate
             && [_delegate respondsToSelector:@selector(controller:didChangeObject:atIndexPath:forChangeType:newIndexPath:)]
@@ -498,6 +545,14 @@ CPFetchedResultsChangeUpdate = 4;
         && [_delegate respondsToSelector:@selector(controllerDidChangeContent:)]
        )
         [_delegate controllerDidChangeContent:self];
+}
+
+- (void)_contextDidSave:(CPNotification)notification
+{
+    // The context was saved — objects previously tracked as "recently inserted"
+    // are now persisted, so subsequent update notifications for them should be
+    // treated as normal updates and reported to the delegate.
+    [_recentlyInserted removeAllObjects];
 }
 
 // ---------------------------------------------------------------------------
