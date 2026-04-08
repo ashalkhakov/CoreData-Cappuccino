@@ -642,8 +642,14 @@ CPFetchedResultsChangeUpdate = 4;
         var order = CPOrderedSame;
         for (var d = 0; d < [descriptors count]; d++)
         {
-            var desc = [descriptors objectAtIndex:d];
-            order    = [desc compareObject:anObject toObject:midObj];
+            var desc    = [descriptors objectAtIndex:d];
+            var sortKey = [desc key];
+            var aVal    = [anObject valueForKeyPath:sortKey];
+            var mVal    = [midObj   valueForKeyPath:sortKey];
+            if (aVal === nil || aVal === undefined ||
+                mVal === nil || mVal === undefined)
+                break;
+            order = [desc compareObject:anObject toObject:midObj];
             if (order !== CPOrderedSame)
                 break;
         }
