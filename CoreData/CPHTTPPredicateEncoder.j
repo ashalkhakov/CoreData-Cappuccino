@@ -13,9 +13,10 @@
 //  Raw-dictionary pass-through
 //  ---------------------------
 //  If the predicate passed to +encodePredicateToAST: is already a
-//  CPDictionary it is returned unchanged.  This lets callers supply a
-//  hand-crafted AST when the high-level CPPredicate classes are not
-//  available:
+//  CPDictionary it is normalized and returned.  Operator aliases such as
+//  "=" are mapped to their canonical form (e.g. "==") so the server never
+//  sees an unsupported operator.  This lets callers supply a hand-crafted
+//  AST when the high-level CPPredicate classes are not available:
 //
 //      var pred = @{ @"op": @"beginswith", @"key": @"fullName", @"value": @"A" };
 //      [request setPredicate:pred];
@@ -41,9 +42,9 @@
     if (predicate === nil || predicate === null)
         return nil;
 
-    // Raw dictionary pass-through
+    // Raw dictionary pass-through (with operator normalization)
     if ([predicate isKindOfClass:[CPDictionary class]])
-        return predicate;
+        return [self _normalizeDictionaryAST:predicate];
 
     if ([predicate isKindOfClass:[CPCompoundPredicate class]])
         return [self _encodeCompoundPredicate:predicate];
@@ -162,6 +163,72 @@
         case CPBeginsWithPredicateOperatorType:           return @"beginswith";
         default:                                          return nil;
     }
+}
+
++ (CPString)_normalizedOpString:(CPString)op
+{
+    // Normalize common aliases to the canonical form expected by the server
+    if (op === @"=")   return @"==";
+    if (op === @"lt")  return @"<";
+    if (op === @"lte") return @"<=";
+    if (op === @"gt")  return @">";
+    if (op === @"gte") return @">=";
+    if (op === @"ne")  return @"!=";
+    return op;
+}
+
+/*!
+    Recursively walk a raw CPDictionary predicate AST and normalize operator
+    strings so aliases like "=" are converted to the canonical form "==" that
+    the server accepts.
+*/
++ (CPDictionary)_normalizeDictionaryAST:(CPDictionary)ast
+{
+    var op = [ast objectForKey:@"op"];
+    if (op === nil)
+        return ast;
+
+    var normalizedOp = [self _normalizedOpString:op];
+
+    // Compound node: recurse into sub-predicates
+    if (op === @"and" || op === @"or")
+    {
+        var subs    = [ast objectForKey:@"subs"],
+            newSubs = [[CPMutableArray alloc] init];
+        if (subs !== nil)
+        {
+            var e = [subs objectEnumerator], sub;
+            while ((sub = [e nextObject]))
+                [newSubs addObject:([sub isKindOfClass:[CPDictionary class]]
+                                        ? [self _normalizeDictionaryAST:sub]
+                                        : sub)];
+        }
+        var result = [[CPMutableDictionary alloc] initWithDictionary:ast];
+        [result setObject:normalizedOp forKey:@"op"];
+        [result setObject:newSubs      forKey:@"subs"];
+        return result;
+    }
+
+    if (op === @"not")
+    {
+        var sub    = [ast objectForKey:@"sub"],
+            newSub = ([sub isKindOfClass:[CPDictionary class]]
+                          ? [self _normalizeDictionaryAST:sub]
+                          : sub);
+        var result = [[CPMutableDictionary alloc] initWithDictionary:ast];
+        [result setObject:normalizedOp forKey:@"op"];
+        if (newSub !== nil)
+            [result setObject:newSub forKey:@"sub"];
+        return result;
+    }
+
+    // Leaf comparison node — just fix the op string if needed
+    if (normalizedOp === op)
+        return ast;
+
+    var result = [[CPMutableDictionary alloc] initWithDictionary:ast];
+    [result setObject:normalizedOp forKey:@"op"];
+    return result;
 }
 
 @end
