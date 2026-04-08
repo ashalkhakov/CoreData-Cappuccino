@@ -41,4 +41,5 @@
 @import "../CPHTTPPredicateEncoder.j"
 @import "../CPHTTPStore.j"
 
+@import "../CPFetchedResultsController.j"
 
