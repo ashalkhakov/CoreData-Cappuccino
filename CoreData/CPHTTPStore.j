@@ -293,8 +293,15 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     var globalID   = [self _globalIDStringForServerID:serverID];
     var values     = serverObj.values || serverObj[@"values"] || {};
 
+    // Try to look up the entity model via the store coordinator so we can
+    // coerce typed values (e.g. Date strings → CPDate) just like the
+    // context-aware path does.
+    var entityName = serverObj.entity || serverObj[@"entity"],
+        model      = [[self storeCoordinator] managedObjectModel],
+        entity     = (model !== nil && entityName) ? [model entityWithName:entityName] : nil;
+
     var obj   = [[CPManagedObject alloc] init];
-    var objID = [[CPManagedObjectID alloc] initWithEntity:nil
+    var objID = [[CPManagedObjectID alloc] initWithEntity:entity
                                                  globalID:globalID
                                               isTemporary:NO];
     [objID setStore:self];
@@ -304,7 +311,16 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     for (var k in values)
     {
         if (values.hasOwnProperty(k))
-            [data setObject:values[k] forKey:k];
+        {
+            var val = values[k];
+            if (entity !== nil && [entity isAttributeName:k])
+            {
+                var attrDesc = [[entity attributesByName] objectForKey:k],
+                    attrType = (attrDesc !== nil) ? [attrDesc typeValue] : CPDUndefinedAttributeType;
+                val = [self _coerceJSONValue:val toAttributeType:attrType];
+            }
+            [data setObject:val forKey:k];
+        }
     }
     [obj _setData:data];
     [obj setFault:NO];
