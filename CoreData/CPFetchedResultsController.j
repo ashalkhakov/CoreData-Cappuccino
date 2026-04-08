@@ -25,50 +25,11 @@ CPFetchedResultsChangeMove   = 3;
 CPFetchedResultsChangeUpdate = 4;
 
 
-// ---------------------------------------------------------------------------
-// CPIndexPath — lightweight section/row index path
-// ---------------------------------------------------------------------------
-
-/*!
-    A simple two-level index path used by CPFetchedResultsController to
-    identify objects by (section, row) coordinates.
-*/
-@implementation CPIndexPath : CPObject
-{
-    CPInteger _section @accessors(getter=section);
-    CPInteger _row     @accessors(getter=row);
-}
-
-/*!
-    Factory method.
-*/
-+ (CPIndexPath)indexPathForRow:(CPInteger)aRow inSection:(CPInteger)aSection
-{
-    var ip = [[self alloc] init];
-    ip._section = aSection;
-    ip._row     = aRow;
-    return ip;
-}
-
-- (BOOL)isEqual:(id)other
-{
-    if (other === self) return YES;
-    if (![other isKindOfClass:[CPIndexPath class]]) return NO;
-    return _section === [other section] && _row === [other row];
-}
-
-- (CPInteger)hash
-{
-    return _section * 100003 + _row;
-}
-
-- (CPString)description
-{
-    return "<CPIndexPath section:" + _section + " row:" + _row + ">";
-}
-
-@end
-
+// CPIndexPath is provided by Cappuccino's Foundation (CPIndexPath.j).
+// We use two-element index paths: index 0 = section, index 1 = row.
+// Factory: [CPIndexPath indexPathWithIndexes:[CPArray arrayWithObjects:section, row, nil]]
+// Access:  [ip indexAtPosition:0]  →  section
+//          [ip indexAtPosition:1]  →  row
 
 // ---------------------------------------------------------------------------
 // CPFetchedResultsSectionInfo — describes one section
@@ -281,12 +242,12 @@ CPFetchedResultsChangeUpdate = 4;
     if (!_hasFetched || indexPath === nil)
         return nil;
 
-    var sectionIdx = [indexPath section];
+    var sectionIdx = [indexPath indexAtPosition:0];
     if (sectionIdx < 0 || sectionIdx >= [_sections count])
         return nil;
 
     var section = [_sections objectAtIndex:sectionIdx];
-    var rowIdx  = [indexPath row];
+    var rowIdx  = [indexPath indexAtPosition:1];
     var objs    = [section objects];
     if (rowIdx < 0 || rowIdx >= [objs count])
         return nil;
@@ -309,7 +270,7 @@ CPFetchedResultsChangeUpdate = 4;
         var objs    = [section objects];
         var row     = [objs indexOfObject:anObject];
         if (row !== CPNotFound)
-            return [CPIndexPath indexPathForRow:row inSection:s];
+            return [CPIndexPath indexPathWithIndexes:[CPArray arrayWithObjects:s, row, nil]];
     }
     return nil;
 }

@@ -282,7 +282,7 @@
     [frc performFetch:nil];
 
     // Alpha is at index 0, Zulu at index 1
-    [self assert:@"Alpha" equals:[[frc objectAtIndexPath:[CPIndexPath indexPathForRow:0 inSection:0]] valueForKey:@"title"]];
+    [self assert:@"Alpha" equals:[[frc objectAtIndexPath:[CPIndexPath indexPathWithIndexes:[CPArray arrayWithObjects:0, 0, nil]]] valueForKey:@"title"]];
 
     // Rename Zulu → "Aardvark" so it moves before Alpha
     [obj2 setValue:@"Aardvark" forKey:@"title"];
