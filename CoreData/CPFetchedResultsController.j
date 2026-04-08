@@ -374,12 +374,12 @@ CPFetchedResultsChangeUpdate = 4;
     // delegate — the original insert notification already covered them.
     for (var i = 0; i < [toSilentUpdate count]; i++)
     {
-        var silentObj   = [toSilentUpdate objectAtIndex:i];
-        var desiredIdx  = [self _sortedInsertionIndexForObject:silentObj
+        var silentObj  = [toSilentUpdate objectAtIndex:i];
+        var currentIdx = [_fetchedObjects indexOfObject:silentObj];
+        var desiredIdx = [self _sortedInsertionIndexForObject:silentObj
                                              usingDescriptors:[_fetchRequest sortDescriptors]
                                                        inArray:_fetchedObjects
                                              excludingObject:silentObj];
-        var currentIdx  = [_fetchedObjects indexOfObject:silentObj];
         if (desiredIdx !== currentIdx)
         {
             [_fetchedObjects removeObjectAtIndex:currentIdx];
