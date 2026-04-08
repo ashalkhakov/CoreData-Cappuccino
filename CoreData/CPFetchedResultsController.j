@@ -649,7 +649,8 @@ CPFetchedResultsChangeUpdate = 4;
             if (aVal === nil || aVal === undefined ||
                 mVal === nil || mVal === undefined)
                 break;
-            order = [desc compareObject:anObject toObject:midObj];
+            // NOTE: Cappuccino uses compareObject:withObject: rather than Apple's compareObject:toObject:
+            order = [desc compareObject:anObject withObject:midObj];
             if (order !== CPOrderedSame)
                 break;
         }
