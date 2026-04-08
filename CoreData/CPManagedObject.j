@@ -138,8 +138,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
             }
             else if([value isKindOfClass:[CPArray class]])
             {
-                //WATCH only for savety remove later
-                CPLog.fatal("isKindOfClass Array **fail**");
+                CPLog.warn("storedValueForKey: to-many relationship '" + aKey + "' stored as CPArray; converting to CPMutableSet");
                 values = [CPMutableSet setWithArray: value];
             }
         }
@@ -859,8 +858,8 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
         if ([property isKindOfClass:[CPRelationshipDescription class]])
         {
             // relationships have no defaultValue; use nil for to-one and an
-            // empty array for to-many
-            value = [property isToMany] ? [] : nil;
+            // empty set for to-many
+            value = [property isToMany] ? [[CPMutableSet alloc] init] : nil;
         }
         else
         {
