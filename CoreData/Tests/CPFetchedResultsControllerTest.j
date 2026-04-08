@@ -281,8 +281,9 @@
     var frc = [self makeFRCWithRequest:[self fetchRequestSortedByTitle]];
     [frc performFetch:nil];
 
-    // Alpha is at index 0, Zulu at index 1
-    [self assert:@"Alpha" equals:[[frc objectAtIndexPath:[CPIndexPath indexPathWithIndexes:[CPArray arrayWithObjects:0, 0, nil]]] valueForKey:@"title"]];
+    // Alpha is at section 0, row 0
+    var firstIP = [CPIndexPath indexPathWithIndexes:[CPArray arrayWithObjects:0, 0, nil]];
+    [self assert:@"Alpha" equals:[[frc objectAtIndexPath:firstIP] valueForKey:@"title"]];
 
     // Rename Zulu → "Aardvark" so it moves before Alpha
     [obj2 setValue:@"Aardvark" forKey:@"title"];
