@@ -129,7 +129,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     }
 
     // Return all materialised objects so the context can register included
-    // relationship objects (e.g. Customer included via propertiesToFetch).
+    // relationship objects (e.g. Customer included via relationshipKeyPathsForPrefetching).
     // The context is responsible for filtering the result to the requested entity.
     var resultSet = [[CPMutableSet alloc] init];
     var matEnum = [allMaterialized objectEnumerator];
@@ -189,34 +189,28 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         [body setObject:[request fetchOffset] forKey:@"offset"];
 
     // include / resultType
-    var propertiesToFetch = [request propertiesToFetch];
-    if (propertiesToFetch !== nil && [propertiesToFetch count] > 0)
+    var relationshipKeyPaths = [request relationshipKeyPathsForPrefetching];
+    if (relationshipKeyPaths !== nil && [relationshipKeyPaths count] > 0)
     {
-        // Special sentinel: ["count"] requests a count result type
-        if (   [propertiesToFetch count] == 1
-            && [[propertiesToFetch objectAtIndex:0] isEqualToString:@"count"])
+        var configDepth = [_configuration objectForKey:CPHTTPStoreDefaultIncludeDepth] || 1;
+        var computedDepth = 1;
+        for (var pi = 0; pi < [relationshipKeyPaths count]; pi++)
         {
-            [body setObject:@"count" forKey:@"resultType"];
+            var keyPath = [relationshipKeyPaths objectAtIndex:pi],
+                parts   = [keyPath componentsSeparatedByString:@"."],
+                d       = [parts count];
+            if (d > computedDepth)
+                computedDepth = d;
         }
-        else
-        {
-            var configDepth = [_configuration objectForKey:CPHTTPStoreDefaultIncludeDepth] || 1;
-            var computedDepth = 1;
-            for (var pi = 0; pi < [propertiesToFetch count]; pi++)
-            {
-                var keyPath = [propertiesToFetch objectAtIndex:pi],
-                    parts   = [keyPath componentsSeparatedByString:@"."],
-                    d       = [parts count];
-                if (d > computedDepth)
-                    computedDepth = d;
-            }
-            var depth = computedDepth > configDepth ? computedDepth : configDepth;
-            [body setObject:[CPDictionary dictionaryWithObjectsAndKeys:
-                                 propertiesToFetch, @"relationships",
-                                 depth,             @"depth"]
-                     forKey:@"include"];
-        }
+        var depth = computedDepth > configDepth ? computedDepth : configDepth;
+        [body setObject:[CPDictionary dictionaryWithObjectsAndKeys:
+                             relationshipKeyPaths, @"relationships",
+                             depth,                @"depth"]
+                 forKey:@"include"];
     }
+
+    if ([request resultType] === CPCountResultType)
+        [body setObject:@"count" forKey:@"resultType"];
 
     // onlyIDs mode
     if ([request transparentFetch])

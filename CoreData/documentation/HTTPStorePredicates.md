@@ -110,21 +110,20 @@ Adds `"return": {"onlyIDs": true}` to the cdFetch body.
 
 ### Relationship inclusion
 
-Pass relationship names in `propertiesToFetch` to include related objects:
+Pass relationship key paths in `relationshipKeyPathsForPrefetching` to include related objects alongside the primary fetch:
 
 ```objj
-[req setPropertiesToFetch:[@"shippingAddress", @"orders"]];
+[req setRelationshipKeyPathsForPrefetching:[@"shippingAddress", @"orders"]];
 ```
 
 Adds `"include": {"relationships": ["shippingAddress","orders"], "depth": 1}`.
 
 ### Count result type
 
-Pass the sentinel array `["count"]` in `propertiesToFetch` to request a
-server-side count instead of objects:
+Set `resultType` to `CPCountResultType` to request a server-side count instead of objects:
 
 ```objj
-[req setPropertiesToFetch:[@"count"]];
+[req setResultType:CPCountResultType];
 ```
 
 Adds `"resultType": "count"` to the cdFetch body.

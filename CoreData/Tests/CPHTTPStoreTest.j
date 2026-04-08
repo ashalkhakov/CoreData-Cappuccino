@@ -176,10 +176,27 @@
 
     var req = [[CPFetchRequest alloc] init];
     [req setEntity:entity];
-    [req setPropertiesToFetch:[@"count"]];
+    [req setResultType:CPCountResultType];
 
     var body = [store _buildFetchBody:req];
     [self assert:@"count" equals:[body objectForKey:@"resultType"]];
+}
+
+- (void)testBuildFetchBodyRelationshipPrefetching
+{
+    var store  = [self _makeStore],
+        entity = [[CPEntityDescription alloc] init];
+    [entity setName:@"Order"];
+
+    var req = [[CPFetchRequest alloc] init];
+    [req setEntity:entity];
+    [req setRelationshipKeyPathsForPrefetching:[@"customer", @"lineItems"]];
+
+    var body    = [store _buildFetchBody:req];
+    var include = [body objectForKey:@"include"];
+    [self assertNotNull:include];
+    [self assert:[@"customer", @"lineItems"] equals:[include objectForKey:@"relationships"]];
+    [self assert:1 equals:[include objectForKey:@"depth"]];
 }
 
 
