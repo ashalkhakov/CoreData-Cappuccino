@@ -1218,7 +1218,12 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     {
         var propName = [propNames objectAtIndex:vi];
         if ([entity isAttributeName:propName] && values.hasOwnProperty(propName))
-            [[obj data] setObject:values[propName] forKey:propName];
+        {
+            var attrDesc   = [[entity attributesByName] objectForKey:propName],
+                coercedVal = [self _coerceJSONValue:values[propName]
+                                    toAttributeType:[attrDesc typeValue]];
+            [[obj data] setObject:coercedVal forKey:propName];
+        }
     }
 
     [obj setFault:NO];
@@ -1515,10 +1520,48 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         return result;
     }
 
+    if ([obj isKindOfClass:[CPDate class]])
+    {
+        var jsDate = new Date([obj timeIntervalSince1970] * 1000.0);
+        return jsDate.toISOString();
+    }
+
     if ([obj isKindOfClass:[CPNumber class]])
         return [obj doubleValue];
 
     return obj;
+}
+
+/*!
+    Coerce a raw JSON wire value to the Cappuccino type dictated by the
+    attribute's CPD*AttributeType.  Currently handles:
+      - CPDDateAttributeType  : number (Unix epoch seconds) or ISO-8601 string
+                                → CPDate
+    All other types are returned unchanged (JSON number / string / boolean
+    map directly to their ObjJ equivalents).
+*/
+- (id)_coerceJSONValue:(id)value toAttributeType:(int)attrType
+{
+    if (value === nil || value === null || value === undefined)
+        return value;
+
+    if (attrType === CPDDateAttributeType)
+    {
+        if ([value isKindOfClass:[CPDate class]])
+            return value;
+
+        if (typeof value === "number")
+            return [CPDate dateWithTimeIntervalSince1970:value];
+
+        if (typeof value === "string" && value.length > 0)
+        {
+            var jsDate = new Date(value);
+            if (!isNaN(jsDate.getTime()))
+                return [CPDate dateWithTimeIntervalSince1970:jsDate.getTime() / 1000.0];
+        }
+    }
+
+    return value;
 }
 
 @end
