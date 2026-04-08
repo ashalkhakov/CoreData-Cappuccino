@@ -128,16 +128,24 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
                           context:context];
     }
 
-    // Build result from root IDs
+    // Return all materialised objects so the context can register included
+    // relationship objects (e.g. Customer included via propertiesToFetch).
+    // The context is responsible for filtering the result to the requested entity.
     var resultSet = [[CPMutableSet alloc] init];
+    var matEnum = [allMaterialized objectEnumerator];
+    var matObj;
+    while ((matObj = [matEnum nextObject]))
+        [resultSet addObject:matObj];
+    // Add fault stubs for root IDs that were not present in objectsByID
     for (var i = 0; i < rootIDs.length; i++)
     {
-        var key = [self _globalIDStringForServerID:rootIDs[i]],
-            obj = [allMaterialized objectForKey:key];
-        if (obj === nil)
-            obj = [self _faultObjectForServerID:rootIDs[i] context:context];
-        if (obj !== nil)
-            [resultSet addObject:obj];
+        var key = [self _globalIDStringForServerID:rootIDs[i]];
+        if ([allMaterialized objectForKey:key] === nil)
+        {
+            var faultObj = [self _faultObjectForServerID:rootIDs[i] context:context];
+            if (faultObj !== nil)
+                [resultSet addObject:faultObj];
+        }
     }
     return resultSet;
 }
@@ -635,14 +643,19 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         }
 
         var resultSet = [[CPMutableSet alloc] init];
+        var matEnum = [allMaterialized objectEnumerator];
+        var matObj;
+        while ((matObj = [matEnum nextObject]))
+            [resultSet addObject:matObj];
         for (var i = 0; i < rootIDs.length; i++)
         {
-            var key = [self_ _globalIDStringForServerID:rootIDs[i]],
-                obj = [allMaterialized objectForKey:key];
-            if (obj === nil)
-                obj = [self_ _faultObjectForServerID:rootIDs[i] context:context];
-            if (obj !== nil)
-                [resultSet addObject:obj];
+            var key = [self_ _globalIDStringForServerID:rootIDs[i]];
+            if ([allMaterialized objectForKey:key] === nil)
+            {
+                var faultObj = [self_ _faultObjectForServerID:rootIDs[i] context:context];
+                if (faultObj !== nil)
+                    [resultSet addObject:faultObj];
+            }
         }
         handler(resultSet, nil);
     }];

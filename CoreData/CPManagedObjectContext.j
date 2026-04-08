@@ -186,17 +186,21 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
             )
     {
         var transparent = [aFetchRequest transparentFetch];
+        var fetchEntity = [aFetchRequest entity];
         var objectEnum = [resultSet objectEnumerator];
         var objectFromResponse;
         while ((objectFromResponse = [objectEnum nextObject]))
         {
             if (transparent)
             {
-                [resultArray addObject:objectFromResponse];
+                if (fetchEntity === nil || [[objectFromResponse entity] isEqual:fetchEntity])
+                    [resultArray addObject:objectFromResponse];
             }
             else
             {
-                [resultArray addObject:[self _registerFetchedObject:objectFromResponse]];
+                var registered = [self _registerFetchedObject:objectFromResponse];
+                if (fetchEntity === nil || [[registered entity] isEqual:fetchEntity])
+                    [resultArray addObject:registered];
             }
         }
     }
@@ -231,14 +235,22 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
             if (resultSet !== nil && error === nil)
             {
                 var transparent = [aFetchRequest transparentFetch],
+                    fetchEntity = [aFetchRequest entity],
                     objectEnum  = [resultSet objectEnumerator],
                     obj;
                 while ((obj = [objectEnum nextObject]))
                 {
                     if (transparent)
-                        [resultArray addObject:obj];
+                    {
+                        if (fetchEntity === nil || [[obj entity] isEqual:fetchEntity])
+                            [resultArray addObject:obj];
+                    }
                     else
-                        [resultArray addObject:[self_ _registerFetchedObject:obj]];
+                    {
+                        var registered = [self_ _registerFetchedObject:obj];
+                        if (fetchEntity === nil || [[registered entity] isEqual:fetchEntity])
+                            [resultArray addObject:registered];
+                    }
                 }
             }
             [[CPNotificationCenter defaultCenter]
@@ -392,11 +404,14 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
                                                    error:error];
         if (resultSet != nil && [resultSet count] > 0 && error == nil)
         {
+            var fetchEntity = [aFetchRequest entity];
             var objectEnum = [resultSet objectEnumerator];
             var objectFromResponse;
             while((objectFromResponse = [objectEnum nextObject]))
             {
-                [resultArray addObject:[self _registerFetchedObject:objectFromResponse]];
+                var registered = [self _registerFetchedObject:objectFromResponse];
+                if (fetchEntity === nil || [[registered entity] isEqual:fetchEntity])
+                    [resultArray addObject:registered];
             }
         }
     }
