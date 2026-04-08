@@ -116,7 +116,7 @@
     var req = [[CPFetchRequest alloc] init];
     [req setEntity:entityDesc];
     [req setSortDescriptors:[CPArray arrayWithObjects:
-        [[NSSortDescriptor alloc] initWithKey:@"title" ascending:YES], nil]];
+        [[CPSortDescriptor alloc] initWithKey:@"title" ascending:YES], nil]];
     return req;
 }
 
@@ -337,7 +337,7 @@
     [req setEntity:entityDesc];
     [req setPredicate:[CPPredicate predicateWithFormat:@"priority < 10"]];
     [req setSortDescriptors:[CPArray arrayWithObjects:
-        [[NSSortDescriptor alloc] initWithKey:@"title" ascending:YES], nil]];
+        [[CPSortDescriptor alloc] initWithKey:@"title" ascending:YES], nil]];
 
     var obj = [self insertItemWithTitle:@"Hotel" priority:5];
     var frc = [CPFetchedResultsController
@@ -388,8 +388,8 @@
     var req = [[CPFetchRequest alloc] init];
     [req setEntity:entityDesc];
     [req setSortDescriptors:[CPArray arrayWithObjects:
-        [[NSSortDescriptor alloc] initWithKey:@"category" ascending:YES],
-        [[NSSortDescriptor alloc] initWithKey:@"title" ascending:YES], nil]];
+        [[CPSortDescriptor alloc] initWithKey:@"category" ascending:YES],
+        [[CPSortDescriptor alloc] initWithKey:@"title" ascending:YES], nil]];
 
     var frc = [CPFetchedResultsController
                   fetchedResultsControllerWithFetchRequest:req
