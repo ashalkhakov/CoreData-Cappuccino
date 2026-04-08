@@ -1220,8 +1220,9 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         if ([entity isAttributeName:propName] && values.hasOwnProperty(propName))
         {
             var attrDesc   = [[entity attributesByName] objectForKey:propName],
+                attrType   = (attrDesc !== nil) ? [attrDesc typeValue] : CPDUndefinedAttributeType,
                 coercedVal = [self _coerceJSONValue:values[propName]
-                                    toAttributeType:[attrDesc typeValue]];
+                                    toAttributeType:attrType];
             [[obj data] setObject:coercedVal forKey:propName];
         }
     }
@@ -1558,6 +1559,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
             var jsDate = new Date(value);
             if (!isNaN(jsDate.getTime()))
                 return [CPDate dateWithTimeIntervalSince1970:jsDate.getTime() / 1000.0];
+            CPLog.warn(@"CPHTTPStore: could not parse date string '" + value + @"'; storing raw value");
         }
     }
 
