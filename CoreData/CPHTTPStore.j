@@ -200,7 +200,17 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         }
         else
         {
-            var depth = [_configuration objectForKey:CPHTTPStoreDefaultIncludeDepth] || 1;
+            var configDepth = [_configuration objectForKey:CPHTTPStoreDefaultIncludeDepth] || 1;
+            var computedDepth = 1;
+            for (var pi = 0; pi < [propertiesToFetch count]; pi++)
+            {
+                var keyPath = [propertiesToFetch objectAtIndex:pi],
+                    parts   = [keyPath componentsSeparatedByString:@"."],
+                    d       = [parts count];
+                if (d > computedDepth)
+                    computedDepth = d;
+            }
+            var depth = computedDepth > configDepth ? computedDepth : configDepth;
             [body setObject:[CPDictionary dictionaryWithObjectsAndKeys:
                                  propertiesToFetch, @"relationships",
                                  depth,             @"depth"]
