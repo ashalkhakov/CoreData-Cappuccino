@@ -610,7 +610,7 @@ CPFetchedResultsChangeUpdate = 4;
     {
         var mid    = Math.floor((lo + hi) / 2);
         var midObj = [array objectAtIndex:mid];
-        if (midObj === excluded)
+        if (midObj === excluded || (excluded !== nil && [midObj isEqual:excluded]))
         {
             // Skip excluded object — step past it
             if (mid + 1 < hi)
@@ -678,7 +678,7 @@ CPFetchedResultsChangeUpdate = 4;
         if (sectionName === nil || sectionName === undefined)
             sectionName = @"";
 
-        if (currentSection === nil || currentName !== sectionName)
+        if (currentSection === nil || ![currentName isEqual:sectionName])
         {
             currentSection = [[CPFetchedResultsSectionInfo alloc] initWithName:sectionName];
             currentName    = sectionName;
