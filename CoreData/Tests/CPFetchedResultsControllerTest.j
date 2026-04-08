@@ -409,8 +409,8 @@
 
 - (void)testIndexPathRoundTrip
 {
-    var obj1 = [self insertItemWithTitle:@"Alfa"   priority:1];
-    var obj2 = [self insertItemWithTitle:@"Bravo"  priority:2];
+    var obj1 = [self insertItemWithTitle:@"Alpha"   priority:1];
+    var obj2 = [self insertItemWithTitle:@"Bravo"   priority:2];
     var obj3 = [self insertItemWithTitle:@"Charlie" priority:3];
 
     var frc = [self makeFRCWithRequest:[self fetchRequestSortedByTitle]];

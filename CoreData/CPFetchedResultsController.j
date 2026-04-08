@@ -89,7 +89,7 @@ CPFetchedResultsChangeUpdate = 4;
 {
     if ((self = [super init]))
     {
-        _name       = aName || @"";
+        _name       = (aName !== nil && aName !== undefined) ? aName : @"";
         _indexTitle = _name;
         _objects    = [[CPMutableArray alloc] init];
     }
@@ -486,12 +486,12 @@ CPFetchedResultsChangeUpdate = 4;
 
     // ---- Rebuild sections and fire section callbacks -----------------------
 
+    // Snapshot the old sections BEFORE rebuilding so we can pass the correct
+    // section info object to the delete callback.
+    var oldSections = _sections ? [CPArray arrayWithArray:_sections] : [CPArray array];
     var oldSectionNames = [[CPMutableArray alloc] init];
-    if (_sections)
-    {
-        for (var i = 0; i < [_sections count]; i++)
-            [oldSectionNames addObject:[[_sections objectAtIndex:i] name]];
-    }
+    for (var i = 0; i < [oldSections count]; i++)
+        [oldSectionNames addObject:[[oldSections objectAtIndex:i] name]];
 
     [self _rebuildSections];
 
@@ -503,22 +503,13 @@ CPFetchedResultsChangeUpdate = 4;
         && [_delegate respondsToSelector:@selector(controller:didChangeSection:atIndex:forChangeType:)]
        )
     {
-        // Deleted sections
+        // Deleted sections — use the old section info from the snapshot
         for (var i = 0; i < [oldSectionNames count]; i++)
         {
             var sname = [oldSectionNames objectAtIndex:i];
             if ([newSectionNames indexOfObject:sname] === CPNotFound)
             {
-                // Find old section info
-                var oldInfo = nil;
-                for (var k = 0; k < [_sections count]; k++)
-                {
-                    if ([[_sections objectAtIndex:k] name] === sname)
-                    {
-                        oldInfo = [_sections objectAtIndex:k];
-                        break;
-                    }
-                }
+                var oldInfo = [oldSections objectAtIndex:i];
                 [_delegate controller:self
                      didChangeSection:oldInfo
                                atIndex:i
