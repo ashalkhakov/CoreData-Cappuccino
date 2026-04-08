@@ -809,6 +809,40 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     return object;
 }
 
+/*!
+    Returns the object for the given object ID.
+
+    If the object is already registered in the context it is returned directly.
+    Otherwise a fault object (isFault == YES) is created, registered, and
+    returned.  The fault will be fully populated the first time any of its
+    properties are accessed.
+
+    This mirrors NSManagedObjectContext -objectWithID:.
+*/
+- (CPManagedObject) objectWithID:(CPManagedObjectID)aObjectID
+{
+    if (aObjectID === nil || aObjectID === null)
+        return nil;
+
+    var existing = [self objectRegisteredForID:aObjectID];
+    if (existing !== nil)
+        return existing;
+
+    // Create a fault: a registered stub whose data has not yet been loaded.
+    var entity = [aObjectID entity];
+    if (entity === nil)
+        return nil;
+
+    var faultObject = [entity createObject];
+    [faultObject setObjectID:aObjectID];
+    [faultObject setFault:YES];
+    if (![aObjectID validatedLocalID])
+        [aObjectID setLocalID:[CPManagedObjectID createLocalID]];
+    [_registeredObjects addObject:faultObject];
+    [faultObject _applyToContext:self];
+    return faultObject;
+}
+
 
 - (CPManagedObject) _fetchObjectWithID:(CPManagedObjectID) aObjectID
 {
