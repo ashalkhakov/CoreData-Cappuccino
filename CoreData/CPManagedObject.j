@@ -89,6 +89,15 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
     return self;
 }
 
+/*!
+    Returns the managed object context with which the receiver is registered.
+    This is the CoreData-compatible alias for the \c context property.
+*/
+- (CPManagedObjectContext)managedObjectContext
+{
+    return _context;
+}
+
 /*
  *    KVC/KVO methods
  */
