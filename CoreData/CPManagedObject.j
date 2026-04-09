@@ -846,6 +846,13 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 
 - (BOOL)_containsKey:(CPString) aKey
 {
+    // A key is "contained" if it is a known property of the entity (regardless
+    // of whether _data has been populated yet — fault objects have an empty
+    // _data dictionary).  Routing all entity-property accesses through
+    // storedValueForKey: ensures that willAccessValueForKey: is always called,
+    // which fires pending faults before the value is read.
+    if (_entity !== nil && [[_entity propertyNames] containsObject:aKey])
+        return YES;
     return [[_data allKeys] containsObject: aKey];
 }
 
