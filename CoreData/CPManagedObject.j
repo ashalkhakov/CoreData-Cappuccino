@@ -379,7 +379,10 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
         //Take care that the new object is under control
         if([_context objectRegisteredForID:tmpObjectID] == nil)
         {
-            [_context insertObject:tmpObjectID];
+            if ([object isKindOfClass:[CPManagedObject class]])
+                [_context insertObject:object];
+            else
+                CPLog.warn(@"addObject:toBothSideOfRelationship: object with ID %@ is not registered in the context and cannot be inserted (only a CPManagedObjectID was provided)", tmpObjectID);
         }
         [self didChangeValueForKey:propertyName];
     }
