@@ -722,6 +722,35 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     {
         // Save succeeded — notify all participating objects
         [[allSavingObjects allObjects] makeObjectsPerformSelector:@selector(didSave)];
+
+        // Keep the coordinator's row cache consistent with the committed state.
+        var coordinator = [self storeCoordinator];
+        if (coordinator !== nil)
+        {
+            // Evict deleted objects so stale data is never served from the cache.
+            var de = [deletedObjects objectEnumerator],
+                delObj;
+            while ((delObj = [de nextObject]))
+            {
+                var delGlobalID = [[delObj objectID] globalID];
+                if (delGlobalID !== nil)
+                    [coordinator invalidateRowDataForGlobalID:delGlobalID];
+            }
+
+            // Refresh cache entries for objects that were saved with new data
+            // (both updated and newly inserted objects whose global ID is now known).
+            var ue = [[CPMutableSet alloc] init];
+            [ue unionSet:updatedObjects];
+            [ue unionSet:insertedObjects];
+            var ueEnum = [ue objectEnumerator],
+                saveObj;
+            while ((saveObj = [ueEnum nextObject]))
+            {
+                var savedGlobalID = [[saveObj objectID] globalID];
+                if (savedGlobalID !== nil)
+                    [coordinator cacheRowData:[saveObj data] forGlobalID:savedGlobalID];
+            }
+        }
     }
     return resultSet;
 }
@@ -851,6 +880,29 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     {
         if([self _deletedObjectWithID:aObjectID] == nil && [aObjectID validatedGlobalID])
         {
+            // --- Check coordinator row cache first ---
+            // Apple's CoreData keeps a shared row-cache at the coordinator level
+            // so that faults can be resolved from data already held in memory by
+            // any context sharing the same coordinator, without a network round-trip.
+            var coordinator = [self storeCoordinator];
+            var cachedData = (coordinator !== nil)
+                                ? [coordinator cachedRowDataForGlobalID:[aObjectID globalID]]
+                                : nil;
+            if (cachedData !== nil)
+            {
+                // Hydrate a new managed object from the cached attribute snapshot.
+                var localEntity = [[self model] entityWithName:[[aObjectID entity] name]];
+                if (localEntity !== nil)
+                {
+                    var cachedObj = [localEntity createObject];
+                    [cachedObj setObjectID:aObjectID];
+                    [cachedObj _setData:[cachedData mutableCopy]];
+                    [cachedObj setFault:NO];
+                    return [self _registerFetchedObject:cachedObj];
+                }
+            }
+
+            // --- Row cache miss: fall back to network fetch ---
             var setWithObjIDs = [[CPMutableSet alloc] init];
             [setWithObjIDs addObject:aObjectID];
 

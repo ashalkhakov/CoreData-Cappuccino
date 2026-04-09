@@ -318,6 +318,12 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     }
     [obj _setData:data];
     [obj setFault:NO];
+
+    // Cache the attribute snapshot at coordinator level.
+    var coordinator = [self storeCoordinator];
+    if (coordinator !== nil && globalID !== nil)
+        [coordinator cacheRowData:data forGlobalID:globalID];
+
     return obj;
 }
 
@@ -1238,6 +1244,14 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     }
 
     [obj setFault:NO];
+
+    // Cache the attribute snapshot in the coordinator's row cache so that
+    // other contexts sharing this coordinator can resolve faults cheaply
+    // without a network round-trip.
+    var coordinator = [self storeCoordinator];
+    if (coordinator !== nil && globalID !== nil)
+        [coordinator cacheRowData:[obj data] forGlobalID:globalID];
+
     return obj;
 }
 
