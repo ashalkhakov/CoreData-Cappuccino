@@ -455,8 +455,26 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 /*
  *    Detect changes and notify the context
  */
+
+/*!
+    Fire the receiver's fault if it has not yet been fulfilled.
+
+    This is called automatically before every property access.  If the object
+    is a fault AND has a global ID, the context is asked to resolve it — first
+    from the coordinator's row cache, and on a cache miss from the persistent
+    store.  After resolution the fault flag is cleared.
+*/
 - (void)willAccessValueForKey:(CPString)aKey
 {
+    if (_isFault && _context !== nil && _objectID !== nil && [_objectID validatedGlobalID])
+    {
+        // _fetchObjectWithID: either finds data in the coordinator's row cache
+        // and merges it into self (via _registerObject: -> _updateWithObject:),
+        // or fires a network request.  Either way, after this call self._data
+        // has been populated.
+        [_context _fetchObjectWithID:_objectID];
+        _isFault = NO;
+    }
 }
 
 - (void)didAccessValueForKey:(CPString)aKey

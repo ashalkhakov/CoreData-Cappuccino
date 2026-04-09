@@ -855,7 +855,54 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 
     var existing = [self objectRegisteredForID:aObjectID];
     if (existing !== nil)
+    {
+        // If the registered object is still a fault but row-cache data is
+        // available, fulfill it in-place right now so callers get a live object.
+        if ([existing isFault] && [aObjectID validatedGlobalID])
+        {
+            var coordinator = [self storeCoordinator];
+            var cachedData = (coordinator !== nil)
+                                ? [coordinator cachedRowDataForGlobalID:[aObjectID globalID]]
+                                : nil;
+            if (cachedData !== nil)
+            {
+                [existing _setData:[cachedData mutableCopy]];
+                [existing setFault:NO];
+                [existing awakeFromFetch];
+            }
+        }
         return existing;
+    }
+
+    // Check the coordinator row cache before creating a fault.
+    // If data is present we can return a fully-resolved object immediately,
+    // matching Apple CoreData's behaviour for objectWithID: when the row is
+    // already known to the coordinator.
+    if ([aObjectID validatedGlobalID])
+    {
+        var coordinator = [self storeCoordinator];
+        var cachedData = (coordinator !== nil)
+                            ? [coordinator cachedRowDataForGlobalID:[aObjectID globalID]]
+                            : nil;
+        if (cachedData !== nil)
+        {
+            var entity = [aObjectID entity];
+            if (entity !== nil)
+            {
+                var localEntity = [[self model] entityWithName:[entity name]];
+                if (localEntity !== nil)
+                {
+                    var cachedObj = [localEntity createObject];
+                    [cachedObj setObjectID:aObjectID];
+                    [cachedObj _setData:[cachedData mutableCopy]];
+                    [cachedObj setFault:NO];
+                    if (![aObjectID validatedLocalID])
+                        [aObjectID setLocalID:[CPManagedObjectID createLocalID]];
+                    return [self _registerFetchedObject:cachedObj];
+                }
+            }
+        }
+    }
 
     // Create a fault: a registered stub whose data has not yet been loaded.
     var entity = [aObjectID entity];
@@ -1145,6 +1192,9 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
             //update regobject with object
             [regObject _updateWithObject: aObject];
             [regObject _applyToContext:self];
+            // The incoming object has its data; the registered object (which may
+            // have been a fault) is now fully populated.
+            [regObject setFault:NO];
             aObject = regObject;
         }
         var userInfo = [CPDictionary dictionaryWithObject:[CPSet setWithObject:aObject]
