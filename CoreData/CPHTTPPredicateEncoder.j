@@ -87,11 +87,11 @@
     if (op === @"not" && [encodedSubs count] == 1)
         return [CPDictionary dictionaryWithObjectsAndKeys:
                     op,                            @"op",
-                    [encodedSubs objectAtIndex:0], @"sub"];
+                    [encodedSubs objectAtIndex:0], @"arg"];
 
     return [CPDictionary dictionaryWithObjectsAndKeys:
                 op,         @"op",
-                encodedSubs, @"subs"];
+                encodedSubs, @"args"];
 }
 
 + (CPDictionary)_encodeComparisonPredicate:(CPComparisonPredicate)predicate
@@ -193,32 +193,40 @@
     // Compound node: recurse into sub-predicates
     if (op === @"and" || op === @"or")
     {
-        var subs    = [ast objectForKey:@"subs"],
-            newSubs = [[CPMutableArray alloc] init];
-        if (subs !== nil)
+        // Accept "args" (current format) or "subs" (legacy) from raw-dict callers
+        var args    = [ast objectForKey:@"args"],
+            newArgs = [[CPMutableArray alloc] init];
+        if (args === nil)
+            args = [ast objectForKey:@"subs"];
+        if (args !== nil)
         {
-            var e = [subs objectEnumerator], sub;
+            var e = [args objectEnumerator], sub;
             while ((sub = [e nextObject]))
-                [newSubs addObject:([sub isKindOfClass:[CPDictionary class]]
+                [newArgs addObject:([sub isKindOfClass:[CPDictionary class]]
                                         ? [self _normalizeDictionaryAST:sub]
                                         : sub)];
         }
         var result = [[CPMutableDictionary alloc] initWithDictionary:ast];
         [result setObject:normalizedOp forKey:@"op"];
-        [result setObject:newSubs      forKey:@"subs"];
+        [result removeObjectForKey:@"subs"];
+        [result setObject:newArgs      forKey:@"args"];
         return result;
     }
 
     if (op === @"not")
     {
-        var sub    = [ast objectForKey:@"sub"],
-            newSub = ([sub isKindOfClass:[CPDictionary class]]
+        // Accept "arg" (current format) or "sub" (legacy) from raw-dict callers
+        var sub    = [ast objectForKey:@"arg"];
+        if (sub === nil)
+            sub = [ast objectForKey:@"sub"];
+        var newSub = ([sub isKindOfClass:[CPDictionary class]]
                           ? [self _normalizeDictionaryAST:sub]
                           : sub);
         var result = [[CPMutableDictionary alloc] initWithDictionary:ast];
         [result setObject:normalizedOp forKey:@"op"];
+        [result removeObjectForKey:@"sub"];
         if (newSub !== nil)
-            [result setObject:newSub forKey:@"sub"];
+            [result setObject:newSub forKey:@"arg"];
         return result;
     }
 

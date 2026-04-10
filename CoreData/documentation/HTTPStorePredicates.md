@@ -59,9 +59,9 @@ Predicates are encoded from `CPFetchRequest.predicate`.  The value may be:
 
 | Type    | AST                                              |
 |---------|--------------------------------------------------|
-| `and`   | `{"op":"and","subs":[...]}`                      |
-| `or`    | `{"op":"or","subs":[...]}`                       |
-| `not`   | `{"op":"not","sub":{...}}`                       |
+| `and`   | `{"op":"and","args":[...]}`                      |
+| `or`    | `{"op":"or","args":[...]}`                       |
+| `not`   | `{"op":"not","arg":{...}}`                       |
 
 ---
 
@@ -133,7 +133,7 @@ Adds `"resultType": "count"` to the cdFetch body.
 ```objj
 var pred = @{
     @"op": @"and",
-    @"subs": @[
+    @"args": @[
         @{ @"op": @"==",          @"key": @"status",  @"value": @"new" },
         @{ @"op": @"beginswith",  @"key": @"fullName", @"value": @"A"  }
     ]
