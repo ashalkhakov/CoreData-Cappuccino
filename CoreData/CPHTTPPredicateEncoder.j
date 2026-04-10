@@ -104,7 +104,7 @@
         value = nil;
 
     if ([lhs expressionType] == CPKeyPathExpressionType)
-        key = [lhs keyPath];
+        key = [self _keyPathFromExpression:lhs];
     if ([rhs expressionType] == CPConstantValueExpressionType)
         value = [rhs constantValue];
 
@@ -143,10 +143,39 @@
         return nil;
     }
 
-    return [CPDictionary dictionaryWithObjectsAndKeys:
-                opString, @"op",
-                key,      @"key",
-                value,    @"value"];
+    var result = [CPMutableDictionary dictionaryWithObjectsAndKeys:
+                      opString, @"op",
+                      key,      @"key",
+                      value,    @"value"];
+
+    // Add caseInsensitive flag when the [c] modifier is used
+    if (   (operatorType == CPContainsPredicateOperatorType
+         || operatorType == CPBeginsWithPredicateOperatorType)
+        && ([predicate options] & CPCaseInsensitivePredicateOption))
+    {
+        [result setObject:YES forKey:@"caseInsensitive"];
+    }
+
+    return result;
+}
+
++ (CPString)_keyPathFromExpression:(CPExpression)expr
+{
+    // Simple case: expression is a direct key path (e.g. "fullName")
+    var keyPath = [expr keyPath];
+
+    // Cappuccino may represent a compound key path like "customer.fullName" as a
+    // CPKeyPathExpression whose 'keyPath' is only the final component ("fullName")
+    // and whose 'operand' is another CPKeyPathExpression for the parent ("customer").
+    // Traverse the operand chain to reassemble the full dotted path.
+    var operand = [expr operand];
+    while (operand !== nil && [operand expressionType] == CPKeyPathExpressionType)
+    {
+        keyPath = [operand keyPath] + "." + keyPath;
+        operand = [operand operand];
+    }
+
+    return keyPath;
 }
 
 + (CPString)_operatorStringForType:(int)operatorType
