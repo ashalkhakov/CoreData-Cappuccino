@@ -51,8 +51,9 @@ CPDUpdatedObjectsKey = "CPDUpdatedObjectsKey";
 CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 
 // Error domain and user-info keys for validation failures.
-CPCoreDataErrorDomain = @"CPCoreDataErrorDomain";
-CPDetailedErrorsKey   = @"CPDetailedErrors";
+CPCoreDataErrorDomain          = @"CPCoreDataErrorDomain";
+CPDetailedErrorsKey            = @"CPDetailedErrors";
+CPValidationMultipleErrorsError = 1550;
 
 
 @implementation CPManagedObjectContext : CPObject
@@ -798,7 +799,7 @@ CPDetailedErrorsKey   = @"CPDetailedErrors";
                    forKey:CPLocalizedDescriptionKey];
             [ui setObject:failedObjects forKey:CPDetailedErrorsKey];
             @deref(error) = [CPError errorWithDomain:CPCoreDataErrorDomain
-                                               code:1550
+                                               code:CPValidationMultipleErrorsError
                                            userInfo:ui];
         }
         return NO;
