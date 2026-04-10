@@ -50,6 +50,10 @@ CPDInsertedObjectsKey = "CPDInsertedObjectsKey";
 CPDUpdatedObjectsKey = "CPDUpdatedObjectsKey";
 CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 
+// Error domain and user-info keys for validation failures.
+CPCoreDataErrorDomain = @"CPCoreDataErrorDomain";
+CPDetailedErrorsKey   = @"CPDetailedErrors";
+
 
 @implementation CPManagedObjectContext : CPObject
 {
@@ -575,8 +579,14 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     [allSavingObjects unionSet:insertedObjects];
     [allSavingObjects unionSet:deletedObjects];
 
-    [self _validateUpdatedObject:updatedObjects
-                 insertedObjects:insertedObjects];
+    var validationError = nil;
+    if (![self _validateUpdatedObject:updatedObjects
+                      insertedObjects:insertedObjects
+                                error:@ref(validationError)])
+    {
+        if (handler) handler(NO, validationError);
+        return;
+    }
 
     [[allSavingObjects allObjects] makeObjectsPerformSelector:@selector(willSave)];
 
@@ -684,8 +694,14 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
                       error:(@ref)error
 {
     var saveError = nil;
-    [self _validateUpdatedObject:updatedObjects
-                 insertedObjects:insertedObjects];
+    if (![self _validateUpdatedObject:updatedObjects
+                      insertedObjects:insertedObjects
+                                error:@ref(saveError)])
+    {
+        if (error && @deref(error) == nil)
+            @deref(error) = saveError;
+        return nil;
+    }
 
     // Notify all objects that are about to be saved
     var allSavingObjects = [[CPMutableSet alloc] init];
@@ -755,8 +771,9 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     return resultSet;
 }
 
-- (void) _validateUpdatedObject:(CPSet)updated
+- (BOOL) _validateUpdatedObject:(CPSet)updated
                 insertedObjects:(CPSet)inserted
+                          error:(@ref)error
 {
     var unionSet = [[CPMutableSet alloc] init];
     [unionSet unionSet:updated];
@@ -764,26 +781,29 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 
     var enumerator = [unionSet objectEnumerator];
     var aObject;
+    var failedObjects = [[CPMutableArray alloc] init];
 
     while((aObject = [enumerator nextObject]))
     {
         if(![aObject validateForUpdate])
-        {
-            [updated removeObject:aObject];
-            [inserted removeObject:aObject];
-
-            var objectEnum = [unionSet objectEnumerator];
-            var object;
-            while((object = [objectEnum nextObject]))
-            {
-                if([object _containsObject:[aObject objectID]])
-                {
-                    [updated removeObject:object];
-                    [inserted removeObject:object];
-                }
-            }
-        }
+            [failedObjects addObject:aObject];
     }
+
+    if ([failedObjects count] > 0)
+    {
+        if (error && @deref(error) == nil)
+        {
+            var ui = [[CPMutableDictionary alloc] init];
+            [ui setObject:@"One or more objects failed validation and the save was aborted."
+                   forKey:CPLocalizedDescriptionKey];
+            [ui setObject:failedObjects forKey:CPDetailedErrorsKey];
+            @deref(error) = [CPError errorWithDomain:CPCoreDataErrorDomain
+                                               code:1550
+                                           userInfo:ui];
+        }
+        return NO;
+    }
+    return YES;
 }
 
 /*
