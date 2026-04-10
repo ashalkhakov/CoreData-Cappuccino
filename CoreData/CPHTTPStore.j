@@ -16,8 +16,8 @@
 //  - The Foundation-provided CPURLConnection synchronous helper does NOT expose
 //    HTTP status codes (it returns CPData only), so we implement our own
 //    "sync" wrapper around the async delegate callbacks by spinning the run loop.
-//  - On non-200: parse OrdersAPI error JSON if present, populate the `error`
-//    out-param, and raise an exception (CoreData-like failure behaviour).
+//  - On non-200: parse OrdersAPI error JSON if present and populate the `error`
+//    out-param.  Returns nil without raising, consistent with NSIncrementalStore.
 //
 
 @import <Foundation/Foundation.j>
@@ -544,51 +544,10 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
                                                  @"url": urlString }];
         if (error)
             @deref(error) = cpErr;
-        [self _raiseForError:cpErr message:@"CPHTTPStore: transport error"];
         return nil;
     }
 
     return httpResult;
-}
-
-/*!
-    Parse an OrdersAPI HTTP response without raising an exception.
-    Error information is returned through the outError CPMutableDictionary
-    (key @"error" is set to a CPError on failure).
-
-    Returns the parsed JS object on success, nil on any error.
-    Safe to call from inside JavaScript closures (no @ref across closure
-    boundaries).
-*/
-- (id)_parseResponseNoRaise:(CPDictionary)http
-                     action:(CPString)action
-                   outError:(CPMutableDictionary)outErr
-{
-    var localError = nil,
-        errRef     = @ref(localError),
-        parsed     = nil;
-    try
-    {
-        parsed = [self _parseOrdersAPIResponseFromHTTP:http action:action error:errRef];
-    }
-    catch (e)
-    {
-        if (localError === nil && [e respondsToSelector:@selector(userInfo)])
-            localError = [[e userInfo] objectForKey:@"error"];
-        if (localError === nil)
-            localError = [self _cpErrorWithDomain:@"CPHTTPStore"
-                                             code:1200
-                                          message:@"Unexpected store error"
-                                        httpStatus:0
-                                          apiError:nil
-                                          userInfo:nil];
-        if (outErr)
-            [outErr setObject:localError forKey:@"error"];
-        return nil;
-    }
-    if (outErr && localError !== nil)
-        [outErr setObject:localError forKey:@"error"];
-    return parsed;
 }
 
 // - Async fetch
@@ -614,12 +573,13 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
             return;
         }
 
-        var outErr = [CPMutableDictionary dictionary],
-            parsed = [self_ _parseResponseNoRaise:http action:@"cdFetch" outError:outErr];
+        var localError = nil,
+            errRef = @ref(localError),
+            parsed = [self_ _parseOrdersAPIResponseFromHTTP:http action:@"cdFetch" error:errRef];
 
         if (parsed === nil)
         {
-            handler([CPSet new], [outErr objectForKey:@"error"]);
+            handler([CPSet new], localError);
             return;
         }
 
@@ -744,12 +704,13 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
             return;
         }
 
-        var outErr = [CPMutableDictionary dictionary],
-            parsed = [self_ _parseResponseNoRaise:http action:@"cdSave" outError:outErr];
+        var localError = nil,
+            errRef = @ref(localError),
+            parsed = [self_ _parseOrdersAPIResponseFromHTTP:http action:@"cdSave" error:errRef];
 
         if (parsed === nil)
         {
-            handler([CPSet new], [outErr objectForKey:@"error"]);
+            handler([CPSet new], localError);
             return;
         }
 
@@ -821,12 +782,14 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
 
 /*!
     Parse OrdersAPI JSON from an HTTP result, and convert non-200 / ok:false
-    into CPError + exception.
+    into a CPError via the error out-parameter.
 
     For 422 specifically: create CoreData-like validation error(s) based on the
     OrdersAPI `error.errors[]` array (entity, temp/id, path, kind, message, op, index).
 
     Returns parsed JS object on success (HTTP 200 and parsed.ok == true).
+    Returns nil and populates the error out-param on any failure.
+    Never raises an exception, consistent with NSIncrementalStore.
 */
 - (id)_parseOrdersAPIResponseFromHTTP:(CPDictionary)http
                               action:(CPString)action
@@ -852,25 +815,22 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         if (statusCode === 422)
         {
             if (error)
-                error = [self _cpCoreDataValidationErrorFromOrdersAPIError:apiErr
+                @deref(error) = [self _cpCoreDataValidationErrorFromOrdersAPIError:apiErr
                                                                 httpStatus:422
                                                                        url:url
                                                                     action:action];
 
-            [self _raiseForError:error message:@"CPHTTPStore: validation failed (422)"];
             return nil;
         }
 
         if (error)
-            error = [self _cpErrorForOrdersAPIError:apiErr
+            @deref(error) = [self _cpErrorForOrdersAPIError:apiErr
                                          httpStatus:statusCode
                                             message:(apiErr && apiErr.message) ? apiErr.message : @"HTTP error"
                                                url:url
                                             action:action
                                       responseText:text];
 
-        [self _raiseForError:error
-                     message:@"CPHTTPStore: server returned non-200"];
         return nil;
     }
 
@@ -878,7 +838,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     if (!parsed)
     {
         if (error)
-            error = [self _cpErrorWithDomain:@"CPHTTPStore"
+            @deref(error) = [self _cpErrorWithDomain:@"CPHTTPStore"
                                         code:1100
                                      message:@"Invalid JSON from server"
                                    httpStatus:200
@@ -886,7 +846,6 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
                                     userInfo:@{ @"url": url,
                                                 @"action": action,
                                                 @"responseText": text }];
-        [self _raiseForError:error message:@"CPHTTPStore: invalid JSON"];
         return nil;
     }
 
@@ -901,23 +860,21 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         if (isValidation)
         {
             if (error)
-                error = [self _cpCoreDataValidationErrorFromOrdersAPIError:apiErr
+                @deref(error) = [self _cpCoreDataValidationErrorFromOrdersAPIError:apiErr
                                                                 httpStatus:200
                                                                        url:url
                                                                     action:action];
-            [self _raiseForError:error message:@"CPHTTPStore: validation failed (ok:false)"];
             return nil;
         }
 
         if (error)
-            error = [self _cpErrorForOrdersAPIError:apiErr
+            @deref(error) = [self _cpErrorForOrdersAPIError:apiErr
                                          httpStatus:200
                                             message:(apiErr && apiErr.message) ? apiErr.message : @"Server error"
                                                url:url
                                             action:action
                                       responseText:text];
 
-        [self _raiseForError:error message:@"CPHTTPStore: ok:false"];
         return nil;
     }
 
@@ -1097,15 +1054,6 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     return [CPError errorWithDomain:(domain || @"CPHTTPStore")
                                code:code
                            userInfo:ui];
-}
-
-- (void)_raiseForError:(CPError)err message:(CPString)msg
-{
-    var info = [CPMutableDictionary dictionary];
-    if (err) [info setObject:err forKey:@"error"];
-    if (msg) [info setObject:msg forKey:@"message"];
-
-    [CPException raise:@"CPHTTPStoreError" reason:(msg || @"CPHTTPStore error") userInfo:info];
 }
 
 // - Object ID helpers (unchanged from original)
