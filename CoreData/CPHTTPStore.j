@@ -942,8 +942,9 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
       userInfo = {
           CPLocalizedDescriptionKey : human-readable summary
           CPDetailedErrorsKey       : [ CPError, ... ]  -- one per server error entry
-                                        each sub-error carries field-level info in
-                                        its own userInfo (entity, property, kind, ...)
+                                        each sub-error: domain=CPCoreDataErrorDomain,
+                                        code=CPValidationMissingMandatoryPropertyError (1570),
+                                        userInfo carries field-level info (entity, property, kind, ...)
           // server-specific extras preserved for diagnostics:
           "httpStatus"    : <int>
           "url"           : <string>
@@ -1004,7 +1005,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         if (idx !== null) [subUI setObject:idx          forKey:@"index"];
 
         var subErr = [CPError errorWithDomain:CPCoreDataErrorDomain
-                                         code:CPValidationMultipleErrorsError
+                                         code:CPValidationMissingMandatoryPropertyError
                                      userInfo:subUI];
         [detailedErrors addObject:subErr];
     }

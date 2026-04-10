@@ -54,6 +54,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 CPCoreDataErrorDomain          = @"CPCoreDataErrorDomain";
 CPDetailedErrorsKey            = @"CPDetailedErrors";
 CPValidationMultipleErrorsError = 1550;
+CPValidationMissingMandatoryPropertyError = 1570;
 
 
 @implementation CPManagedObjectContext : CPObject
