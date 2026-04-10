@@ -54,6 +54,8 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 
     CPMutableDictionary _data @accessors(getter=data);
     CPMutableDictionary _changedData @accessors(getter=changedData);
+
+    CPMutableSet _loadedRelationships;
 }
 
 -(id)init
@@ -62,6 +64,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
     {
         _data = [[CPMutableDictionary alloc] init];
         _changedData = [[CPMutableDictionary alloc] init];
+        _loadedRelationships = [[CPMutableSet alloc] init];
         _isUpdated = NO;
         _isDeleted = NO;
         _isFault = NO;
@@ -96,6 +99,28 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 - (CPManagedObjectContext)managedObjectContext
 {
     return _context;
+}
+
+/*!
+    Record that a relationship was loaded from the persistent store.
+    Called by CPHTTPStore after materialising a relationship from a server
+    response.  Only relationships recorded here are included in the save
+    payload for updated objects, preventing a partial inverse to-many set
+    from overwriting the authoritative server-side collection.
+*/
+- (void)noteRelationshipLoaded:(CPString)key
+{
+    [_loadedRelationships addObject:key];
+}
+
+/*!
+    Returns YES if the relationship named \a key was loaded from the
+    persistent store (i.e. it was present in a server response and
+    applied via -noteRelationshipLoaded:).
+*/
+- (BOOL)isRelationshipLoaded:(CPString)key
+{
+    return [_loadedRelationships containsObject:key];
 }
 
 /*

@@ -1250,6 +1250,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         if (relValue === nil || relValue === null)
         {
             [[obj data] setObject:nil forKey:relName];
+            [obj noteRelationshipLoaded:relName];
             continue;
         }
 
@@ -1273,6 +1274,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
                     [idSet addObject:relID];
             }
             [[obj data] setObject:idSet forKey:relName];
+            [obj noteRelationshipLoaded:relName];
         }
         else
         {
@@ -1280,6 +1282,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
                                           context:context
                                   allMaterialized:allMaterialized];
             [[obj data] setObject:relID forKey:relName];
+            [obj noteRelationshipLoaded:relName];
         }
     }
 }
@@ -1335,7 +1338,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
 
     var valueDict = [[CPMutableDictionary alloc] init],
         relDict   = [[CPMutableDictionary alloc] init];
-    [self _encodePropertiesOf:obj values:valueDict relationships:relDict];
+    [self _encodePropertiesOf:obj values:valueDict relationships:relDict skipUnloadedToMany:NO];
 
     [result setObject:valueDict forKey:@"values"];
     if ([relDict count] > 0)
@@ -1354,7 +1357,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
 
     var valueDict = [[CPMutableDictionary alloc] init],
         relDict   = [[CPMutableDictionary alloc] init];
-    [self _encodePropertiesOf:obj values:valueDict relationships:relDict];
+    [self _encodePropertiesOf:obj values:valueDict relationships:relDict skipUnloadedToMany:YES];
 
     [result setObject:valueDict forKey:@"values"];
     if ([relDict count] > 0)
@@ -1370,6 +1373,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
 - (void)_encodePropertiesOf:(CPManagedObject)obj
                      values:(CPMutableDictionary)valueDict
               relationships:(CPMutableDictionary)relDict
+        skipUnloadedToMany:(BOOL)skipUnloadedToMany
 {
     var entity    = [obj entity],
         data      = [obj data],
@@ -1392,6 +1396,14 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
             var relDesc = [[entity relationshipsByName] objectForKey:propName];
             if ([relDesc isToMany])
             {
+                // Skip to-many relationships that were never loaded from the
+                // server on updated objects.  Their content is incomplete
+                // (only items added client-side via inverse maintenance) so
+                // encoding them would overwrite the authoritative server-side
+                // collection with a partial set.
+                if (skipUnloadedToMany && ![obj isRelationshipLoaded:propName])
+                    continue;
+
                 var refs    = [[CPMutableArray alloc] init],
                     relEnum = nil,
                     relItem;
