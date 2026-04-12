@@ -199,12 +199,6 @@
     var frc = [self makeFRCWithRequest:[self fetchRequestSortedByTitle]];
     [frc performFetch:nil];
 
-    // Reset logs: we care only about changes triggered by the insert,
-    // not the controllerDidChangeContent: call made by performFetch: itself.
-    [[delegate willChangeLog] removeAllObjects];
-    [[delegate didChangeLog]  removeAllObjects];
-    [[delegate objectChanges] removeAllObjects];
-
     [self insertItemWithTitle:@"Delta" priority:4];
 
     [self assert:1

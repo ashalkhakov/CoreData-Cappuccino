@@ -201,11 +201,6 @@ CPFetchedResultsChangeUpdate = 4;
     _hasFetched     = YES;
     [self _rebuildSections];
 
-    if (   _delegate
-        && [_delegate respondsToSelector:@selector(controllerDidChangeContent:)]
-       )
-        [_delegate controllerDidChangeContent:self];
-
     return YES;
 }
 
@@ -230,10 +225,6 @@ CPFetchedResultsChangeUpdate = 4;
         self_._fetchedObjects = [CPMutableArray arrayWithArray:results];
         self_._hasFetched     = YES;
         [self_ _rebuildSections];
-        if (   self_._delegate
-            && [self_._delegate respondsToSelector:@selector(controllerDidChangeContent:)]
-           )
-            [self_._delegate controllerDidChangeContent:self_];
         if (handler) handler(YES, nil);
     }];
 }

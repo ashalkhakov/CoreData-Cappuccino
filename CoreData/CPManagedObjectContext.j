@@ -263,6 +263,9 @@ CPValidationMissingMandatoryPropertyError = 1570;
                 postNotificationName:CPManagedObjectContextDidLoadObjectsNotification
                               object:self_
                             userInfo:nil];
+            var sortDescriptors = [aFetchRequest sortDescriptors];
+            if (sortDescriptors !== nil && [sortDescriptors count] > 0)
+                resultArray = [CPMutableArray arrayWithArray:[resultArray sortedArrayUsingDescriptors:sortDescriptors]];
             if (handler) handler(resultArray, error);
         }];
     }
@@ -270,6 +273,9 @@ CPValidationMissingMandatoryPropertyError = 1570;
     {
         // Sync fallback for stores that don't implement the async API
         var resultArray = [self executeStoreFetchRequest:aFetchRequest];
+        var sortDescriptors = [aFetchRequest sortDescriptors];
+        if (sortDescriptors !== nil && [sortDescriptors count] > 0)
+            resultArray = [CPMutableArray arrayWithArray:[resultArray sortedArrayUsingDescriptors:sortDescriptors]];
         [[CPNotificationCenter defaultCenter]
             postNotificationName:CPManagedObjectContextDidLoadObjectsNotification
                           object:self
