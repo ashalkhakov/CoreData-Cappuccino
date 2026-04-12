@@ -130,26 +130,41 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
                           context:context];
     }
 
-    // Return all materialised objects so the context can register included
-    // relationship objects (e.g. Customer included via relationshipKeyPathsForPrefetching).
-    // The context is responsible for filtering the result to the requested entity.
-    var resultSet = [[CPMutableSet alloc] init];
-    var matEnum = [allMaterialized objectEnumerator];
-    var matObj;
-    while ((matObj = [matEnum nextObject]))
-        [resultSet addObject:matObj];
-    // Add fault stubs for root IDs that were not present in objectsByID
+    // Return objects in the server-specified root order so callers see the
+    // same ordering as the server intended.  Any materialised objects that
+    // were included only for relationship prefetching (not listed in root)
+    // are appended afterwards so they can still be registered by the context.
+    var resultArray = [[CPMutableArray alloc] init];
+    var inRoot = [[CPMutableSet alloc] init];
     for (var i = 0; i < rootIDs.length; i++)
     {
         var key = [self _globalIDStringForServerID:rootIDs[i]];
-        if ([allMaterialized objectForKey:key] === nil)
+        var matObj = [allMaterialized objectForKey:key];
+        if (matObj !== nil)
+        {
+            [resultArray addObject:matObj];
+            [inRoot addObject:matObj];
+        }
+        else
         {
             var faultObj = [self _faultObjectForServerID:rootIDs[i] context:context];
             if (faultObj !== nil)
-                [resultSet addObject:faultObj];
+            {
+                [resultArray addObject:faultObj];
+                [inRoot addObject:faultObj];
+            }
         }
     }
-    return resultSet;
+    // Append any materialised objects not listed in root (e.g. prefetched
+    // relationship targets) so the context can still register them.
+    var matEnum = [allMaterialized objectEnumerator];
+    var matObj;
+    while ((matObj = [matEnum nextObject]))
+    {
+        if (![inRoot containsObject:matObj])
+            [resultArray addObject:matObj];
+    }
+    return resultArray;
 }
 
 /*!
@@ -630,22 +645,35 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
                                context:context];
         }
 
-        var resultSet = [[CPMutableSet alloc] init];
-        var matEnum = [allMaterialized objectEnumerator];
-        var matObj;
-        while ((matObj = [matEnum nextObject]))
-            [resultSet addObject:matObj];
+        var resultArray = [[CPMutableArray alloc] init];
+        var inRoot = [[CPMutableSet alloc] init];
         for (var i = 0; i < rootIDs.length; i++)
         {
             var key = [self_ _globalIDStringForServerID:rootIDs[i]];
-            if ([allMaterialized objectForKey:key] === nil)
+            var matObj = [allMaterialized objectForKey:key];
+            if (matObj !== nil)
+            {
+                [resultArray addObject:matObj];
+                [inRoot addObject:matObj];
+            }
+            else
             {
                 var faultObj = [self_ _faultObjectForServerID:rootIDs[i] context:context];
                 if (faultObj !== nil)
-                    [resultSet addObject:faultObj];
+                {
+                    [resultArray addObject:faultObj];
+                    [inRoot addObject:faultObj];
+                }
             }
         }
-        handler(resultSet, nil);
+        var matEnum = [allMaterialized objectEnumerator];
+        var matObj;
+        while ((matObj = [matEnum nextObject]))
+        {
+            if (![inRoot containsObject:matObj])
+                [resultArray addObject:matObj];
+        }
+        handler(resultArray, nil);
     }];
 }
 
