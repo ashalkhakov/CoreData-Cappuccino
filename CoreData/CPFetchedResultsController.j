@@ -119,6 +119,22 @@ CPFetchedResultsChangeUpdate = 4;
     // no delegate callbacks) because the initial insert callback already
     // covers the logical "one insert" operation.
     CPMutableSet            _recentlyInserted;
+
+    // Pending delegate notifications accumulated across one or more
+    // CPManagedObjectContextObjectsDidChangeNotification deliveries within a
+    // single save cycle.  Each entry is a CPDictionary with keys:
+    //   "type"   – CPFetchedResultsChangeInsert/Delete/Move/Update
+    //   "object" – the affected CPManagedObject
+    //   "oldIP"  – CPIndexPath or nil (nil for inserts)
+    //   "newIP"  – CPIndexPath or nil (nil for deletes)
+    // They are flushed — with a single willChange/didChange pair — when
+    // CPManagedObjectContextDidSaveNotification arrives.
+    CPMutableArray          _pendingChanges;
+
+    // Snapshot of _sections taken at the very start of a batch (before the
+    // first ObjectsDidChange in a save cycle).  Used to compute section
+    // additions/removals when flushing.
+    CPArray                 _sectionsAtBatchStart;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +167,8 @@ CPFetchedResultsChangeUpdate = 4;
         _fetchedObjects       = nil;
         _sections             = nil;
         _recentlyInserted     = [[CPMutableSet alloc] init];
+        _pendingChanges       = [[CPMutableArray alloc] init];
+        _sectionsAtBatchStart = nil;
 
         [[CPNotificationCenter defaultCenter]
             addObserver:self
@@ -396,12 +414,12 @@ CPFetchedResultsChangeUpdate = 4;
        )
         return;
 
-    // ---- Notify: will change -----------------------------------------------
-
-    if (   _delegate
-        && [_delegate respondsToSelector:@selector(controllerWillChangeContent:)]
-       )
-        [_delegate controllerWillChangeContent:self];
+    // ---- Snapshot sections at start of batch (before first change) ----------
+    // All changes within a single save cycle are batched.  We record the
+    // section layout that was visible before any of those changes so that
+    // _flushPendingChanges can compute section additions/removals correctly.
+    if ([_pendingChanges count] === 0)
+        _sectionsAtBatchStart = _sections ? [CPArray arrayWithArray:_sections] : [CPArray array];
 
     // ---- Apply deletions (high index first) --------------------------------
 
@@ -418,14 +436,12 @@ CPFetchedResultsChangeUpdate = 4;
         var oldIP  = [self indexPathForObject:delObj];
         [self _removeObjectFromFetchedObjects:delObj];
         [_recentlyInserted removeObject:delObj];
-        if (   _delegate
-            && [_delegate respondsToSelector:@selector(controller:didChangeObject:atIndexPath:forChangeType:newIndexPath:)]
-           )
-            [_delegate controller:self
-                  didChangeObject:delObj
-                      atIndexPath:oldIP
-                    forChangeType:CPFetchedResultsChangeDelete
-                     newIndexPath:nil];
+        [_pendingChanges addObject:[CPDictionary dictionaryWithObjectsAndKeys:
+            CPFetchedResultsChangeDelete, @"type",
+            delObj, @"object",
+            oldIP ? oldIP : [CPNull null], @"oldIP",
+            [CPNull null], @"newIP"
+        ]];
     }
 
     // ---- Apply insertions (binary-search, sorted) --------------------------
@@ -436,14 +452,12 @@ CPFetchedResultsChangeUpdate = 4;
         [self _insertObjectIntoFetchedObjects:insObj];
         [_recentlyInserted addObject:insObj];
         var newIP = [self indexPathForObject:insObj];
-        if (   _delegate
-            && [_delegate respondsToSelector:@selector(controller:didChangeObject:atIndexPath:forChangeType:newIndexPath:)]
-           )
-            [_delegate controller:self
-                  didChangeObject:insObj
-                      atIndexPath:nil
-                    forChangeType:CPFetchedResultsChangeInsert
-                     newIndexPath:newIP];
+        [_pendingChanges addObject:[CPDictionary dictionaryWithObjectsAndKeys:
+            CPFetchedResultsChangeInsert, @"type",
+            insObj, @"object",
+            [CPNull null], @"oldIP",
+            newIP ? newIP : [CPNull null], @"newIP"
+        ]];
     }
 
     // ---- Process updates (move vs update) ----------------------------------
@@ -471,48 +485,91 @@ CPFetchedResultsChangeUpdate = 4;
             [_fetchedObjects insertObject:updObj atIndex:insertIdx];
 
             var newIP = [self indexPathForObject:updObj];
-            if (   _delegate
-                && [_delegate respondsToSelector:@selector(controller:didChangeObject:atIndexPath:forChangeType:newIndexPath:)]
-               )
-                [_delegate controller:self
-                      didChangeObject:updObj
-                          atIndexPath:oldIP
-                        forChangeType:CPFetchedResultsChangeMove
-                         newIndexPath:newIP];
+            [_pendingChanges addObject:[CPDictionary dictionaryWithObjectsAndKeys:
+                CPFetchedResultsChangeMove, @"type",
+                updObj, @"object",
+                oldIP ? oldIP : [CPNull null], @"oldIP",
+                newIP ? newIP : [CPNull null], @"newIP"
+            ]];
         }
         else
         {
-            if (   _delegate
-                && [_delegate respondsToSelector:@selector(controller:didChangeObject:atIndexPath:forChangeType:newIndexPath:)]
-               )
-                [_delegate controller:self
-                      didChangeObject:updObj
-                          atIndexPath:oldIP
-                        forChangeType:CPFetchedResultsChangeUpdate
-                         newIndexPath:oldIP];
+            [_pendingChanges addObject:[CPDictionary dictionaryWithObjectsAndKeys:
+                CPFetchedResultsChangeUpdate, @"type",
+                updObj, @"object",
+                oldIP ? oldIP : [CPNull null], @"oldIP",
+                oldIP ? oldIP : [CPNull null], @"newIP"
+            ]];
         }
     }
 
-    // ---- Rebuild sections and fire section callbacks -----------------------
-
-    // Snapshot the old sections BEFORE rebuilding so we can pass the correct
-    // section info object to the delete callback.
-    var oldSections = _sections ? [CPArray arrayWithArray:_sections] : [CPArray array];
-    var oldSectionNames = [[CPMutableArray alloc] init];
-    for (var i = 0; i < [oldSections count]; i++)
-        [oldSectionNames addObject:[[oldSections objectAtIndex:i] name]];
-
+    // Rebuild sections so _sections always reflects the current fetchedObjects.
+    // Delegate section callbacks are deferred to _flushPendingChanges.
     [self _rebuildSections];
+}
 
-    var newSectionNames = [[CPMutableArray alloc] init];
-    for (var i = 0; i < [_sections count]; i++)
-        [newSectionNames addObject:[[_sections objectAtIndex:i] name]];
+- (void)_contextDidSave:(CPNotification)notification
+{
+    // The context was saved — flush all accumulated change notifications to the
+    // delegate as a single willChange/didChange batch, then reset state.
+    [self _flushPendingChanges];
+    [_recentlyInserted removeAllObjects];
+}
+
+- (void)_flushPendingChanges
+{
+    if ([_pendingChanges count] === 0)
+        return;
+
+    // ---- Notify: will change -----------------------------------------------
+
+    if (   _delegate
+        && [_delegate respondsToSelector:@selector(controllerWillChangeContent:)]
+       )
+        [_delegate controllerWillChangeContent:self];
+
+    // ---- Fire queued object-change callbacks --------------------------------
+
+    if (   _delegate
+        && [_delegate respondsToSelector:@selector(controller:didChangeObject:atIndexPath:forChangeType:newIndexPath:)]
+       )
+    {
+        for (var i = 0; i < [_pendingChanges count]; i++)
+        {
+            var change = [_pendingChanges objectAtIndex:i];
+            var type   = [change objectForKey:@"type"];
+            var chObj  = [change objectForKey:@"object"];
+            var oldIP  = [change objectForKey:@"oldIP"];
+            var newIP  = [change objectForKey:@"newIP"];
+            // Convert CPNull sentinels back to nil for the delegate
+            if (oldIP === [CPNull null] || [oldIP isKindOfClass:[CPNull class]])
+                oldIP = nil;
+            if (newIP === [CPNull null] || [newIP isKindOfClass:[CPNull class]])
+                newIP = nil;
+            [_delegate controller:self
+                  didChangeObject:chObj
+                      atIndexPath:oldIP
+                    forChangeType:type
+                     newIndexPath:newIP];
+        }
+    }
+
+    // ---- Fire section-change callbacks (batch start → current state) --------
 
     if (   _delegate
         && [_delegate respondsToSelector:@selector(controller:didChangeSection:atIndex:forChangeType:)]
        )
     {
-        // Deleted sections — use the old section info from the snapshot
+        var oldSections     = _sectionsAtBatchStart ? _sectionsAtBatchStart : [CPArray array];
+        var oldSectionNames = [[CPMutableArray alloc] init];
+        for (var i = 0; i < [oldSections count]; i++)
+            [oldSectionNames addObject:[[oldSections objectAtIndex:i] name]];
+
+        var newSectionNames = [[CPMutableArray alloc] init];
+        for (var i = 0; i < [_sections count]; i++)
+            [newSectionNames addObject:[[_sections objectAtIndex:i] name]];
+
+        // Deleted sections — use the pre-batch section info objects
         for (var i = 0; i < [oldSectionNames count]; i++)
         {
             var sname = [oldSectionNames objectAtIndex:i];
@@ -546,14 +603,11 @@ CPFetchedResultsChangeUpdate = 4;
         && [_delegate respondsToSelector:@selector(controllerDidChangeContent:)]
        )
         [_delegate controllerDidChangeContent:self];
-}
 
-- (void)_contextDidSave:(CPNotification)notification
-{
-    // The context was saved — objects previously tracked as "recently inserted"
-    // are now persisted, so subsequent update notifications for them should be
-    // treated as normal updates and reported to the delegate.
-    [_recentlyInserted removeAllObjects];
+    // ---- Reset batch state -------------------------------------------------
+
+    [_pendingChanges removeAllObjects];
+    _sectionsAtBatchStart = nil;
 }
 
 // ---------------------------------------------------------------------------
