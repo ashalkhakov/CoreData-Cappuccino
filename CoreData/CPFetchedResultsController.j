@@ -542,9 +542,9 @@ CPFetchedResultsChangeUpdate = 4;
             var oldIP  = [change objectForKey:@"oldIP"];
             var newIP  = [change objectForKey:@"newIP"];
             // Convert CPNull sentinels back to nil for the delegate
-            if (oldIP === [CPNull null] || [oldIP isKindOfClass:[CPNull class]])
+            if (oldIP === [CPNull null])
                 oldIP = nil;
-            if (newIP === [CPNull null] || [newIP isKindOfClass:[CPNull class]])
+            if (newIP === [CPNull null])
                 newIP = nil;
             [_delegate controller:self
                   didChangeObject:chObj
