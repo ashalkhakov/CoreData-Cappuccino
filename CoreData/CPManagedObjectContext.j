@@ -500,7 +500,15 @@ CPValidationMissingMandatoryPropertyError = 1570;
 {
     if (![self hasChanges])
     {
-        return YES
+        // Even with no store-level changes there may be FRC pending changes
+        // (e.g. deletes of objects without a persistent globalID).  Always
+        // post DidSave so observers such as CPFetchedResultsController have a
+        // chance to flush those pending changes.
+        [[CPNotificationCenter defaultCenter]
+            postNotificationName: CPManagedObjectContextDidSaveNotification
+                          object: self
+                        userInfo: nil];
+        return YES;
     }
     var result = NO;
     if ([[self store] respondsToSelector:@selector(
