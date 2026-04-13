@@ -87,13 +87,15 @@
 // Temporary IDs: x-coredata:///EntityName/tLocalID
 - (CPURL)uriRepresentation
 {
-    var entityName = (_entity != nil) ? [_entity name] : @"";
+    var entityName = (_entity != nil) ? encodeURIComponent([_entity name]) : @"";
     if (_isTemporary)
     {
-        return [CPURL URLWithString:@"x-coredata:///" + entityName + @"/t" + [self localID]];
+        var localPart = encodeURIComponent([self localID]);
+        return [CPURL URLWithString:@"x-coredata:///" + entityName + @"/t" + localPart];
     }
-    var storeID = (_persistentStore != nil) ? [_persistentStore storeID] : @"";
-    return [CPURL URLWithString:@"x-coredata://" + storeID + @"/" + entityName + @"/p" + (_globalID || @"")];
+    var storeID    = (_persistentStore != nil) ? encodeURIComponent([_persistentStore storeID]) : @"",
+        globalPart = encodeURIComponent(_globalID || @"");
+    return [CPURL URLWithString:@"x-coredata://" + storeID + @"/" + entityName + @"/p" + globalPart];
 }
 
 - (id)localID
