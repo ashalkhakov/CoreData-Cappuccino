@@ -605,16 +605,9 @@
     [frc performFetch:nil];
 
     // Insert three items out of alphabetical order, then verify sort
-    var obj1 = [[CPManagedObject alloc] initWithEntity:entityDesc inManagedObjectContext:context];
-    [obj1 setValue:@"November" forKey:@"title"];
-    [obj1 setValue:1 forKey:@"priority"];
-    var obj2 = [[CPManagedObject alloc] initWithEntity:entityDesc inManagedObjectContext:context];
-    [obj2 setValue:@"Oscar" forKey:@"title"];
-    [obj2 setValue:2 forKey:@"priority"];
-    var obj3 = [[CPManagedObject alloc] initWithEntity:entityDesc inManagedObjectContext:context];
-    [obj3 setValue:@"Mike" forKey:@"title"];
-    [obj3 setValue:3 forKey:@"priority"];
-    [context saveChanges:nil];
+    [self insertItemWithTitle:@"November" priority:1];
+    [self insertItemWithTitle:@"Oscar"    priority:2];
+    [self insertItemWithTitle:@"Mike"     priority:3];
 
     var objs = [frc fetchedObjects];
     [self assert:3 equals:[objs count]
