@@ -860,7 +860,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
     {
         _objectID = [[CPManagedObjectID alloc] initWithEntity:_entity globalID:nil isTemporary:YES];
         [_objectID setContext:context];
-        [_objectID setStore:[context store]];
+        [_objectID setPersistentStore:[context store]];
     }
 }
 

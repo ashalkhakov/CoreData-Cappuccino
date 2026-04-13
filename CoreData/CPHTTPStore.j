@@ -315,7 +315,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     var objID = [[CPManagedObjectID alloc] initWithEntity:entity
                                                  globalID:globalID
                                               isTemporary:NO];
-    [objID setStore:self];
+    [objID setPersistentStore:self];
     [obj setObjectID:objID];
 
     var data = [[CPMutableDictionary alloc] init];
@@ -1192,7 +1192,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         var objID = [[CPManagedObjectID alloc] initWithEntity:entity
                                                      globalID:globalID
                                                   isTemporary:NO];
-        [objID setStore:self];
+        [objID setPersistentStore:self];
         [obj setObjectID:objID];
     }
 
@@ -1250,7 +1250,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     var objID = [[CPManagedObjectID alloc] initWithEntity:entity
                                                  globalID:globalID
                                               isTemporary:NO];
-    [objID setStore:self];
+    [objID setPersistentStore:self];
     [obj setObjectID:objID];
     [obj setContext:context];
     [obj setFault:YES];
@@ -1350,7 +1350,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     var newID = [[CPManagedObjectID alloc] initWithEntity:newEntity
                                                  globalID:globalID
                                               isTemporary:NO];
-    [newID setStore:self];
+    [newID setPersistentStore:self];
     return newID;
 }
 
