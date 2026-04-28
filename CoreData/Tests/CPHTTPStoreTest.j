@@ -288,31 +288,34 @@
     [store setStoreCoordinator:coordinator];
 
     // ---- Build mock materialised objects (no context needed for this test) ----
+    var kOrderID   = 1,
+        kExpenseID = 7;
+
     var orderObj = [orderEntity createObject];
     var orderID  = [[CPManagedObjectID alloc] initWithEntity:orderEntity
-                                                    globalID:@"Order|orderID=1;"
+                                                    globalID:@"Order|orderID=" + kOrderID + @";"
                                                  isTemporary:NO];
     [orderObj setObjectID:orderID];
     [orderObj setFault:NO];
 
     var expObj = [expEntity createObject];
     var expID  = [[CPManagedObjectID alloc] initWithEntity:expEntity
-                                                  globalID:@"OrderExpense|expenseID=7;"
+                                                  globalID:@"OrderExpense|expenseID=" + kExpenseID + @";"
                                                isTemporary:NO];
     [expObj setObjectID:expID];
     [expObj setFault:NO];
 
     // allMaterialized maps globalID → managed object
     var allMaterialized = [CPMutableDictionary dictionaryWithObjectsAndKeys:
-                               orderObj, @"Order|orderID=1;",
-                               expObj,   @"OrderExpense|expenseID=7;"];
+                               orderObj, [orderID globalID],
+                               expObj,   [expID globalID]];
 
-    // ---- Apply relationships: Order.expenses = [expense #7] ----
+    // ---- Apply relationships: Order.expenses = [expense #kExpenseID] ----
     // Simulate the server returning:
-    //   relationships: { expenses: [{entity:"OrderExpense", pk:{expenseID:7}}] }
+    //   relationships: { expenses: [{entity:"OrderExpense", pk:{expenseID:kExpenseID}}] }
     // The server does NOT include `order` in the expense's relationships block.
     var relationships = {
-        expenses: [{ entity: "OrderExpense", pk: { expenseID: 7 } }]
+        expenses: [{ entity: "OrderExpense", pk: { expenseID: kExpenseID } }]
     };
 
     [store _applyRelationships:relationships
@@ -331,7 +334,7 @@
     var orderVal = [[expObj data] objectForKey:@"order"];
     [self assertNotNull:orderVal
                 message:@"expense.order should be non-nil after inverse propagation"];
-    [self assert:@"Order|orderID=1;" equals:[orderVal globalID]
+    [self assert:[orderID globalID] equals:[orderVal globalID]
          message:@"expense.order globalID should match Order's globalID"];
 }
 
@@ -377,28 +380,31 @@
                                     storeConfiguration:storeConfig];
     [store setStoreCoordinator:coordinator];
 
+    var kOrderID2   = 2,
+        kExpenseID2 = 9;
+
     var orderObj = [orderEntity createObject];
     var orderID  = [[CPManagedObjectID alloc] initWithEntity:orderEntity
-                                                    globalID:@"Order|orderID=2;"
+                                                    globalID:@"Order|orderID=" + kOrderID2 + @";"
                                                  isTemporary:NO];
     [orderObj setObjectID:orderID];
     [orderObj setFault:NO];
 
     var expObj = [expEntity createObject];
     var expID  = [[CPManagedObjectID alloc] initWithEntity:expEntity
-                                                  globalID:@"OrderExpense|expenseID=9;"
+                                                  globalID:@"OrderExpense|expenseID=" + kExpenseID2 + @";"
                                                isTemporary:NO];
     [expObj setObjectID:expID];
     [expObj setFault:NO];
 
     var allMaterialized = [CPMutableDictionary dictionaryWithObjectsAndKeys:
-                               orderObj, @"Order|orderID=2;",
-                               expObj,   @"OrderExpense|expenseID=9;"];
+                               orderObj, [orderID globalID],
+                               expObj,   [expID globalID]];
 
     // Apply the to-one from expense's perspective:
-    //   relationships: { order: {entity:"Order", pk:{orderID:2}} }
+    //   relationships: { order: {entity:"Order", pk:{orderID:kOrderID2}} }
     var relationships = {
-        order: { entity: "Order", pk: { orderID: 2 } }
+        order: { entity: "Order", pk: { orderID: kOrderID2 } }
     };
 
     [store _applyRelationships:relationships
