@@ -176,7 +176,7 @@
     var objID = [expense objectID];
     [objID setGlobalID:@"OrderExpense|expenseID=7;"];
     [objID setIsTemporary:NO];
-    [[expense data] setObject:@100 forKey:@"amount"];
+    [[expense data] setObject:100 forKey:@"amount"];
     // `orderID` stays nil in _data (server did not return it)
 
     [self assertFalse:[[expense objectID] isTemporary]
