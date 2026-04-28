@@ -1299,7 +1299,45 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
                                               context:context
                                       allMaterialized:allMaterialized];
                 if (relID !== nil)
+                {
                     [idSet addObject:relID];
+
+                    // Propagate the inverse to-one relationship on the related
+                    // object so it points back to `obj`.  Apple's CoreData
+                    // maintains referential integrity automatically; this
+                    // mirrors that behaviour so that, e.g., an OrderExpense
+                    // fetched via Order.expenses has its `order` navigation
+                    // property filled in even when the server did not include
+                    // it in the expense's own relationships block.
+                    var inverseRelName = [relDesc inversePropertyName];
+                    if (inverseRelName !== nil)
+                    {
+                        var relGlobalID = [relID globalID],
+                            relObj = (relGlobalID !== nil)
+                                        ? [allMaterialized objectForKey:relGlobalID]
+                                        : nil;
+                        if (relObj === nil && context !== nil)
+                            relObj = [context objectRegisteredForID:relID];
+
+                        if (relObj !== nil)
+                        {
+                            var relEntity     = [relObj entity],
+                                relRelsByName = [relEntity relationshipsByName],
+                                inverseDesc   = [relRelsByName objectForKey:inverseRelName];
+
+                            // Only fill a to-one inverse and only when the
+                            // server did not already supply a value for it.
+                            if (   inverseDesc !== nil
+                                && ![inverseDesc isToMany]
+                                && [[relObj data] objectForKey:inverseRelName] === nil
+                               )
+                            {
+                                [[relObj data] setObject:[obj objectID] forKey:inverseRelName];
+                                [relObj noteRelationshipLoaded:inverseRelName];
+                            }
+                        }
+                    }
+                }
             }
             [[obj data] setObject:idSet forKey:relName];
             [obj noteRelationshipLoaded:relName];
@@ -1311,6 +1349,40 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
                                   allMaterialized:allMaterialized];
             [[obj data] setObject:relID forKey:relName];
             [obj noteRelationshipLoaded:relName];
+
+            // Propagate the inverse to-many relationship on the related object
+            // so it includes `obj`.  This mirrors Apple's CoreData behaviour.
+            var inverseRelName = [relDesc inversePropertyName];
+            if (inverseRelName !== nil && relID !== nil)
+            {
+                var relGlobalID = [relID globalID],
+                    relObj = (relGlobalID !== nil)
+                                ? [allMaterialized objectForKey:relGlobalID]
+                                : nil;
+                if (relObj === nil && context !== nil)
+                    relObj = [context objectRegisteredForID:relID];
+
+                if (relObj !== nil)
+                {
+                    var relEntity     = [relObj entity],
+                        relRelsByName = [relEntity relationshipsByName],
+                        inverseDesc   = [relRelsByName objectForKey:inverseRelName];
+
+                    // Only fill a to-many inverse.
+                    if (inverseDesc !== nil && [inverseDesc isToMany])
+                    {
+                        var existingSet = [[relObj data] objectForKey:inverseRelName];
+                        if (existingSet === nil || existingSet === null)
+                            existingSet = [[CPMutableSet alloc] init];
+                        if (![existingSet containsObject:[obj objectID]])
+                        {
+                            [existingSet addObject:[obj objectID]];
+                            [[relObj data] setObject:existingSet forKey:inverseRelName];
+                            [relObj noteRelationshipLoaded:inverseRelName];
+                        }
+                    }
+                }
+            }
         }
     }
 }

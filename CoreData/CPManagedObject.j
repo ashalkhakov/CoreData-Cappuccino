@@ -750,6 +750,15 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
     var result = YES,
         allKeys = [_data allKeys],
         relationships = [_entity relationshipsByName];
+
+    // For existing objects fetched from the server (non-temporary global ID),
+    // Apple's CoreData only re-validates properties that were explicitly changed
+    // by the application.  Properties that were never populated from the server
+    // (nil in _data and absent from _changedData) must not block a save for an
+    // otherwise valid change on the same object.  New inserts (temporary ID) are
+    // always fully validated so all mandatory attributes must be supplied.
+    var isNewObject = (_objectID === nil || [_objectID isTemporary]);
+
     for(var i=0; i < [allKeys count]; i++)
     {
         var property = [allKeys objectAtIndex:i];
@@ -759,6 +768,9 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
                 && ![_changedData objectForKey:property]
                )
             {
+                if (!isNewObject)
+                    continue; // existing object: skip nil check for unchanged attribute
+
                 CPLog.warn(@"Object '%s' is not complete because property '%s' is missing",
                             [[self entity] name],
                             property
@@ -775,6 +787,9 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
                    && ![_changedData objectForKey:property]
                   )
                 {
+                    if (!isNewObject)
+                        continue; // existing object: skip nil check for unchanged relationship
+
                     CPLog.warn(@"Object '%s' is not complete because relation '%s' is missing",
                                 [[self entity] name],
                                 property
