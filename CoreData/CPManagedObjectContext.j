@@ -595,10 +595,7 @@ CPValidationMissingMandatoryPropertyError = 1570;
     // block the save.  The real IDs are filled in from idMap after the store
     // responds.
     if ([[self store] respondsToSelector:@selector(obtainPermanentIDsForObjects:error:)])
-    {
-        var obtainError = nil;
-        [[self store] obtainPermanentIDsForObjects:insertedObjects error:@ref(obtainError)];
-    }
+        [[self store] obtainPermanentIDsForObjects:insertedObjects error:nil];
 
     if (![self _validateUpdatedObject:updatedObjects
                       insertedObjects:insertedObjects
@@ -718,10 +715,7 @@ CPValidationMissingMandatoryPropertyError = 1570;
     // block the save.  The real IDs are filled in from idMap after the store
     // responds.
     if ([[self store] respondsToSelector:@selector(obtainPermanentIDsForObjects:error:)])
-    {
-        var obtainError = nil;
-        [[self store] obtainPermanentIDsForObjects:insertedObjects error:@ref(obtainError)];
-    }
+        [[self store] obtainPermanentIDsForObjects:insertedObjects error:nil];
 
     var saveError = nil;
     if (![self _validateUpdatedObject:updatedObjects
