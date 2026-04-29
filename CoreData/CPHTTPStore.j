@@ -1474,8 +1474,8 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     // Attribute values in _changedData that still equal the cached server value
     // (e.g. re-set by UI bindings during form load) are silently skipped so
     // that only genuinely modified attributes are sent to the server.
-    var coordinator  = [self storeCoordinator],
-        globalID     = [objID globalID],
+    var coordinator = [self storeCoordinator],
+        globalID = [objID globalID],
         baselineData = (coordinator !== nil && globalID !== nil)
                            ? [coordinator cachedRowDataForGlobalID:globalID]
                            : nil;
