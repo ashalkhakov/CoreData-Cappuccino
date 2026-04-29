@@ -362,10 +362,16 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     while ((obj = [ie nextObject]))
         [insertedArray addObject:[self _encodeObjectForInsert:obj]];
 
-    // Encode updated
+    // Encode updated — skip objects that have no actual changes to send
+    // (e.g. a fetched entity whose only _changedData entries are inverse
+    // to-many relationships that were never loaded from the server)
     var ue = [updatedObjects objectEnumerator];
     while ((obj = [ue nextObject]))
-        [updatedArray addObject:[self _encodeObjectForUpdate:obj]];
+    {
+        var encoded = [self _encodeObjectForUpdate:obj];
+        if (encoded !== nil)
+            [updatedArray addObject:encoded];
+    }
 
     // Encode deleted
     var de = [deletedObjects objectEnumerator];
@@ -701,9 +707,14 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     while ((obj = [ie nextObject]))
         [insertedArray addObject:[self _encodeObjectForInsert:obj]];
 
+    // Skip objects with no actual changes to send (see sync path comment above)
     var ue = [updatedObjects objectEnumerator];
     while ((obj = [ue nextObject]))
-        [updatedArray addObject:[self _encodeObjectForUpdate:obj]];
+    {
+        var encoded = [self _encodeObjectForUpdate:obj];
+        if (encoded !== nil)
+            [updatedArray addObject:encoded];
+    }
 
     var de = [deletedObjects objectEnumerator];
     while ((obj = [de nextObject]))
@@ -1438,7 +1449,8 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
 
     var valueDict = [[CPMutableDictionary alloc] init],
         relDict   = [[CPMutableDictionary alloc] init];
-    [self _encodePropertiesOf:obj values:valueDict relationships:relDict skipUnloadedToMany:NO];
+    [self _encodePropertiesOf:obj values:valueDict relationships:relDict
+              changedDataOnly:NO skipUnloadedToMany:NO];
 
     [result setObject:valueDict forKey:@"values"];
     if ([relDict count] > 0)
@@ -1457,7 +1469,19 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
 
     var valueDict = [[CPMutableDictionary alloc] init],
         relDict   = [[CPMutableDictionary alloc] init];
-    [self _encodePropertiesOf:obj values:valueDict relationships:relDict skipUnloadedToMany:YES];
+    // Only encode properties that were explicitly changed by the application.
+    // This ensures:
+    //   (a) Only modified fields are sent to the server (not the entire object).
+    //   (b) Objects whose only "changes" came from inverse-relationship
+    //       maintenance on an unloaded to-many (e.g. a fetched Product gaining
+    //       a lineItem reference via the inverse of lineItem.product) produce an
+    //       empty payload and are skipped from the update set altogether.
+    [self _encodePropertiesOf:obj values:valueDict relationships:relDict
+              changedDataOnly:YES skipUnloadedToMany:YES];
+
+    // Nothing actually changed that the server needs to know about.
+    if ([valueDict count] == 0 && [relDict count] == 0)
+        return nil;
 
     [result setObject:valueDict forKey:@"values"];
     if ([relDict count] > 0)
@@ -1473,16 +1497,23 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
 - (void)_encodePropertiesOf:(CPManagedObject)obj
                      values:(CPMutableDictionary)valueDict
               relationships:(CPMutableDictionary)relDict
+            changedDataOnly:(BOOL)changedDataOnly
         skipUnloadedToMany:(BOOL)skipUnloadedToMany
 {
-    var entity    = [obj entity],
-        data      = [obj data],
-        propNames = [entity propertyNames];
+    var entity      = [obj entity],
+        // When encoding only changed properties, read values from _changedData so
+        // that the most-recently-set value is encoded even if the caller has set
+        // _data and _changedData independently (e.g., in tests or during fault
+        // resolution).  For full-object encoding (inserts), use _data as before.
+        valueSource = changedDataOnly ? [obj changedData] : [obj data],
+        propNames   = changedDataOnly
+                          ? [valueSource allKeys]
+                          : [entity propertyNames];
 
     for (var pi = 0; pi < [propNames count]; pi++)
     {
         var propName  = [propNames objectAtIndex:pi],
-            propValue = [data objectForKey:propName];
+            propValue = [valueSource objectForKey:propName];
 
         if ([entity isAttributeName:propName])
         {

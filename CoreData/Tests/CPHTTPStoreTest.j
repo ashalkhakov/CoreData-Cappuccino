@@ -520,6 +520,123 @@
 
 
 // ---------------------------------------------------------------------------
+// CPHTTPStore – _encodeObjectForUpdate: changed-data-only and empty-payload filter
+// ---------------------------------------------------------------------------
+
+/*!
+    Verifies that _encodeObjectForUpdate: encodes only the fields that appear
+    in the object's _changedData, not the entire _data dictionary.
+
+    Scenario: a Product was fetched from the server (so _data has many fields),
+    but the user only changed "name". The update payload must contain only
+    "name" in the values dict, not all other fields like "sku", "unitPrice" etc.
+*/
+- (void)testEncodeObjectForUpdate_onlySendsChangedFields
+{
+    var store  = [self _makeStore],
+        entity = [[CPEntityDescription alloc] init];
+    [entity setName:@"Product"];
+    [entity addAttributeWithName:@"productID"  classValue:@"CPNumber" typeValue:CPDInteger32AttributeType optional:NO];
+    [entity addAttributeWithName:@"name"        classValue:@"CPString" typeValue:CPDStringAttributeType    optional:NO];
+    [entity addAttributeWithName:@"sku"         classValue:@"CPString" typeValue:CPDStringAttributeType    optional:YES];
+    [entity addAttributeWithName:@"unitPrice"   classValue:@"CPNumber" typeValue:CPDInteger32AttributeType optional:YES];
+
+    var obj   = [entity createObject],
+        objID = [[CPManagedObjectID alloc] initWithEntity:entity
+                                                 globalID:@"Product|productID=508;"
+                                              isTemporary:NO];
+    [obj setObjectID:objID];
+    [obj setFault:NO];
+
+    // Simulate "fetched from server" — all fields are in _data
+    var fullData = [CPMutableDictionary dictionaryWithObjectsAndKeys:
+                        508,         @"productID",
+                        @"Gadget B", @"name",
+                        @"GADGET-B", @"sku",
+                        26,          @"unitPrice"];
+    [obj _setData:fullData];
+
+    // User only changed "name"
+    var changedData = [CPMutableDictionary dictionaryWithObject:@"Gadget B v2" forKey:@"name"];
+    [obj _setChangedData:changedData];
+
+    var encoded = [store _encodeObjectForUpdate:obj];
+
+    [self assertNotNull:encoded
+                message:@"_encodeObjectForUpdate: should produce a non-nil dict for a changed object"];
+
+    var values = [encoded objectForKey:@"values"];
+    [self assertNotNull:values
+                message:@"encoded result should have a 'values' key"];
+    [self assert:1 equals:[values count]
+         message:@"only 1 attribute should be encoded (only 'name' was changed)"];
+    [self assert:@"Gadget B v2" equals:[values objectForKey:@"name"]
+         message:@"the changed 'name' value should be encoded"];
+    [self assertNull:[values objectForKey:@"sku"]
+             message:@"unchanged 'sku' should NOT be encoded"];
+    [self assertNull:[values objectForKey:@"unitPrice"]
+             message:@"unchanged 'unitPrice' should NOT be encoded"];
+    [self assertNull:[values objectForKey:@"productID"]
+             message:@"unchanged 'productID' should NOT be encoded"];
+}
+
+/*!
+    Verifies that _encodeObjectForUpdate: returns nil when the only
+    _changedData entries are inverse to-many relationships that were never
+    loaded from the server.
+
+    Scenario: a Product is fetched in the main context.  Later, a new
+    OrderLineItem is inserted with lineItem.product = product.  The framework's
+    inverse-relationship maintenance adds the lineItem's objectID to
+    product._changedData["lineItems"], but lineItems was never fetched
+    (isRelationshipLoaded:NO).  The product should NOT appear in the update
+    payload.
+*/
+- (void)testEncodeObjectForUpdate_returnsNilWhenOnlyUnloadedInverseRelChanged
+{
+    var store  = [self _makeStore],
+        entity = [[CPEntityDescription alloc] init];
+    [entity setName:@"Product"];
+    [entity addAttributeWithName:@"productID" classValue:@"CPNumber" typeValue:CPDInteger32AttributeType optional:NO];
+    [entity addRelationshipWithName:@"lineItems"
+                             toMany:YES
+                           optional:YES
+                         deleteRule:0
+                        destination:@"OrderLineItem"];
+
+    var obj   = [entity createObject],
+        objID = [[CPManagedObjectID alloc] initWithEntity:entity
+                                                 globalID:@"Product|productID=508;"
+                                              isTemporary:NO];
+    [obj setObjectID:objID];
+    [obj setFault:NO];
+
+    // Simulate "fetched from server" — scalar data is in _data; lineItems NOT loaded
+    var fullData = [CPMutableDictionary dictionaryWithObject:508 forKey:@"productID"];
+    [obj _setData:fullData];
+
+    // Inverse maintenance put a lineItem ID into _changedData["lineItems"],
+    // but the lineItems relationship was never loaded from the server.
+    var lineItemID = [[CPManagedObjectID alloc] initWithEntity:nil
+                                                      globalID:nil
+                                                   isTemporary:YES];
+    var changedSet = [CPMutableSet setWithObject:lineItemID];
+    var changedData = [CPMutableDictionary dictionaryWithObject:changedSet forKey:@"lineItems"];
+    [obj _setChangedData:changedData];
+
+    // lineItems was NOT loaded from the server — isRelationshipLoaded returns NO
+    [self assertFalse:[obj isRelationshipLoaded:@"lineItems"]
+              message:@"precondition: lineItems should not be marked as loaded"];
+
+    var encoded = [store _encodeObjectForUpdate:obj];
+
+    [self assertNull:encoded
+             message:@"_encodeObjectForUpdate: should return nil when the only changed "
+                    + @"data is an inverse to-many that was never loaded from the server"];
+}
+
+
+// ---------------------------------------------------------------------------
 // Helper
 // ---------------------------------------------------------------------------
 
