@@ -1501,10 +1501,9 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         skipUnloadedToMany:(BOOL)skipUnloadedToMany
 {
     var entity      = [obj entity],
-        // When encoding only changed properties, read values from _changedData so
-        // that the most-recently-set value is encoded even if the caller has set
-        // _data and _changedData independently (e.g., in tests or during fault
-        // resolution).  For full-object encoding (inserts), use _data as before.
+        // When encoding only changed properties, read values from _changedData
+        // so that only the explicitly-modified fields (and their current values)
+        // are included in the update payload sent to the server.
         valueSource = changedDataOnly ? [obj changedData] : [obj data],
         propNames   = changedDataOnly
                           ? [valueSource allKeys]
