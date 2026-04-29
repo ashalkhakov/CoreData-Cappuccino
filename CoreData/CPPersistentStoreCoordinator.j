@@ -22,14 +22,23 @@
 	CPMutableDictionary _rowCache;
 }
 
-- (id) initWithManagedObjectModel: (NSManagedObjectModel) model
+- (id) init
 {
 	if ((self = [super init]))
 	{
-		_model = model;
 		_undoManager = [CPUndoManager new];
 		_persistentStores = [CPDictionary new];
 		_rowCache = [CPMutableDictionary new];
+	}
+
+	return self;
+}
+
+- (id) initWithManagedObjectModel: (NSManagedObjectModel) model
+{
+	if ((self = [self init]))
+	{
+		_model = model;
 	}
 	
 	return self;	
@@ -40,11 +49,9 @@
 				 		storeType:(CPPersistentStoreType) aStoreType
 			   storeConfiguration:(id) aConfiguration
 {
-	if ((self = [super init]))
+	if ((self = [self init]))
 	{
 		_model = model
-		_undoManager = [CPUndoManager new];
-		_rowCache = [CPMutableDictionary new];
 		[self addPersistentStoreWithType:aStoreType configuration:aConfiguration];		
 	}
 	
