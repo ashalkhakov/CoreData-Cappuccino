@@ -427,6 +427,99 @@
 
 
 // ---------------------------------------------------------------------------
+// CPHTTPStore – obtainPermanentIDsForObjects:error:
+// ---------------------------------------------------------------------------
+
+/*!
+    Verifies that obtainPermanentIDsForObjects:error: promotes the temporary
+    IDs of newly-inserted objects to permanent placeholders (isTemporary=NO)
+    without requiring a server round-trip, and that the localID (used as the
+    temp key for the cdSave payload) is preserved.
+*/
+- (void)testObtainPermanentIDsForObjects_promotesTemporaryIDs
+{
+    var store  = [self _makeStore],
+        entity = [[CPEntityDescription alloc] init];
+    [entity setName:@"Customer"];
+
+    // Create two objects with temporary IDs (simulating insertNewObjectForEntityForName:)
+    var obj1 = [[CPManagedObject alloc] init];
+    var id1  = [[CPManagedObjectID alloc] initWithEntity:entity
+                                                globalID:nil
+                                             isTemporary:YES];
+    [obj1 setObjectID:id1];
+
+    var obj2 = [[CPManagedObject alloc] init];
+    var id2  = [[CPManagedObjectID alloc] initWithEntity:entity
+                                                globalID:nil
+                                             isTemporary:YES];
+    [obj2 setObjectID:id2];
+
+    [self assertTrue:[[obj1 objectID] isTemporary]
+             message:@"precondition: obj1 should start with a temporary ID"];
+    [self assertTrue:[[obj2 objectID] isTemporary]
+             message:@"precondition: obj2 should start with a temporary ID"];
+
+    var localID1 = [id1 localID],
+        localID2 = [id2 localID];
+
+    var objects = [CPSet setWithObjects:obj1, obj2, nil];
+    var error   = nil;
+    var result  = [store obtainPermanentIDsForObjects:objects error:@ref(error)];
+
+    [self assertTrue:result
+             message:@"obtainPermanentIDsForObjects:error: should return YES"];
+    [self assertFalse:[[obj1 objectID] isTemporary]
+              message:@"obj1 ID should no longer be temporary after obtainPermanentIDsForObjects:"];
+    [self assertFalse:[[obj2 objectID] isTemporary]
+              message:@"obj2 ID should no longer be temporary after obtainPermanentIDsForObjects:"];
+
+    // localID must be preserved so that _tempKeyForObject: keeps working
+    [self assert:localID1 equals:[[obj1 objectID] localID]
+         message:@"localID of obj1 must be unchanged after obtainPermanentIDsForObjects:"];
+    [self assert:localID2 equals:[[obj2 objectID] localID]
+         message:@"localID of obj2 must be unchanged after obtainPermanentIDsForObjects:"];
+
+    // globalID is still nil; the server has not responded yet
+    [self assertFalse:[[obj1 objectID] validatedGlobalID]
+              message:@"globalID of obj1 should still be nil (set later from idMap)"];
+}
+
+/*!
+    Verifies that _refForObjectID: falls back to the temp-key encoding when
+    globalID is nil even if isTemporary was already cleared.  This is needed
+    when an inserted object references another co-inserted object via a
+    relationship: both have permanent-placeholder IDs but neither has a server
+    ID yet.
+*/
+- (void)testRefForObjectID_usesTemKeyWhenGlobalIDNil
+{
+    var store  = [self _makeStore],
+        entity = [[CPEntityDescription alloc] init];
+    [entity setName:@"Order"];
+
+    var objID = [[CPManagedObjectID alloc] initWithEntity:entity
+                                                 globalID:nil
+                                              isTemporary:YES];
+    // Simulate obtainPermanentIDsForObjects: clearing isTemporary
+    [objID setIsTemporary:NO];
+
+    [self assertFalse:[objID isTemporary]
+              message:@"precondition: isTemporary should be NO"];
+    [self assertFalse:[objID validatedGlobalID]
+              message:@"precondition: globalID should still be nil"];
+
+    var ref = [store _refForObjectID:objID];
+    [self assertNotNull:ref
+                message:@"_refForObjectID: should return a non-nil dictionary"];
+    [self assertNotNull:[ref objectForKey:@"temp"]
+                message:@"_refForObjectID: should use temp key when globalID is nil"];
+    [self assertNull:[ref objectForKey:@"entity"]
+             message:@"_refForObjectID: should NOT produce a server-ID dict when globalID is nil"];
+}
+
+
+// ---------------------------------------------------------------------------
 // Helper
 // ---------------------------------------------------------------------------
 

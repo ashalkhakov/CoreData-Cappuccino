@@ -1538,10 +1538,42 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
 
 - (CPDictionary)_refForObjectID:(CPManagedObjectID)objectID
 {
-    if ([objectID isTemporary])
+    // Use the temp key when the ID is temporary OR when it has no server-assigned
+    // globalID yet (i.e. obtainPermanentIDsForObjects: promoted isTemporary→NO
+    // as a placeholder, but the server hasn't responded with a real ID yet).
+    if ([objectID isTemporary] || ![objectID validatedGlobalID])
         return [CPDictionary dictionaryWithObject:[self _tempKeyForObjectID:objectID]
                                            forKey:@"temp"];
     return [self _serverIDForObjectID:objectID];
+}
+
+/*!
+    Promote the temporary IDs of newly-inserted objects to permanent
+    placeholder IDs without a server round-trip.
+
+    This is called by CPManagedObjectContext before validation runs.
+    Setting isTemporary = NO makes _validateForChanges treat inserted objects
+    the same as existing objects: it skips nil-checks for attributes that were
+    never explicitly set by the application (such as server-assigned primary
+    keys).  The globalID remains nil until the server responds after the save
+    and idMap assigns the real IDs.
+
+    @param objects  A CPSet of CPManagedObject instances about to be inserted.
+    @param error    Unused; provided for API symmetry with Apple's
+                    NSIncrementalStore -obtainPermanentIDsForObjects:error:.
+    @return YES always.
+*/
+- (BOOL)obtainPermanentIDsForObjects:(CPSet)objects error:(@ref)error
+{
+    var e = [objects objectEnumerator],
+        obj;
+    while ((obj = [e nextObject]))
+    {
+        var objectID = [obj objectID];
+        if (objectID !== nil && [objectID isTemporary])
+            [objectID setIsTemporary:NO];
+    }
+    return YES;
 }
 
 - (CPString)_tempKeyForObject:(CPManagedObject)obj

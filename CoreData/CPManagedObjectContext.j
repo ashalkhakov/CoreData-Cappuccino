@@ -590,6 +590,16 @@ CPValidationMissingMandatoryPropertyError = 1570;
     [allSavingObjects unionSet:deletedObjects];
 
     var validationError = nil;
+    // Promote temporary IDs to permanent placeholders before validation so
+    // that server-assigned mandatory attributes (nil at this point) do not
+    // block the save.  The real IDs are filled in from idMap after the store
+    // responds.
+    if ([[self store] respondsToSelector:@selector(obtainPermanentIDsForObjects:error:)])
+    {
+        var obtainError = nil;
+        [[self store] obtainPermanentIDsForObjects:insertedObjects error:@ref(obtainError)];
+    }
+
     if (![self _validateUpdatedObject:updatedObjects
                       insertedObjects:insertedObjects
                                 error:@ref(validationError)])
@@ -703,6 +713,16 @@ CPValidationMissingMandatoryPropertyError = 1570;
                     deleted:(CPSet)deletedObjects
                       error:(@ref)error
 {
+    // Promote temporary IDs to permanent placeholders before validation so
+    // that server-assigned mandatory attributes (nil at this point) do not
+    // block the save.  The real IDs are filled in from idMap after the store
+    // responds.
+    if ([[self store] respondsToSelector:@selector(obtainPermanentIDsForObjects:error:)])
+    {
+        var obtainError = nil;
+        [[self store] obtainPermanentIDsForObjects:insertedObjects error:@ref(obtainError)];
+    }
+
     var saveError = nil;
     if (![self _validateUpdatedObject:updatedObjects
                       insertedObjects:insertedObjects
