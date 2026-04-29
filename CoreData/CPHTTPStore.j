@@ -1450,7 +1450,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     var valueDict = [[CPMutableDictionary alloc] init],
         relDict   = [[CPMutableDictionary alloc] init];
     [self _encodePropertiesOf:obj values:valueDict relationships:relDict
-              changedDataOnly:NO skipUnloadedToMany:NO];
+              changedDataOnly:NO skipUnloadedToMany:NO baselineData:nil];
 
     [result setObject:valueDict forKey:@"values"];
     if ([relDict count] > 0)
@@ -1469,6 +1469,17 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
 
     var valueDict = [[CPMutableDictionary alloc] init],
         relDict   = [[CPMutableDictionary alloc] init];
+
+    // Retrieve the last-known server state from the coordinator row cache.
+    // Attribute values in _changedData that still equal the cached server value
+    // (e.g. re-set by UI bindings during form load) are silently skipped so
+    // that only genuinely modified attributes are sent to the server.
+    var coordinator  = [self storeCoordinator],
+        globalID     = [objID globalID],
+        baselineData = (coordinator !== nil && globalID !== nil)
+                           ? [coordinator cachedRowDataForGlobalID:globalID]
+                           : nil;
+
     // Only encode properties that were explicitly changed by the application.
     // This ensures:
     //   (a) Only modified fields are sent to the server (not the entire object).
@@ -1477,7 +1488,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     //       a lineItem reference via the inverse of lineItem.product) produce an
     //       empty payload and are skipped from the update set altogether.
     [self _encodePropertiesOf:obj values:valueDict relationships:relDict
-              changedDataOnly:YES skipUnloadedToMany:YES];
+              changedDataOnly:YES skipUnloadedToMany:YES baselineData:baselineData];
 
     // Nothing actually changed that the server needs to know about.
     if ([valueDict count] == 0 && [relDict count] == 0)
@@ -1499,6 +1510,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
               relationships:(CPMutableDictionary)relDict
             changedDataOnly:(BOOL)changedDataOnly
         skipUnloadedToMany:(BOOL)skipUnloadedToMany
+              baselineData:(CPDictionary)baselineData
 {
     var entity      = [obj entity],
         // When encoding only changed properties, read values from _changedData
@@ -1517,7 +1529,19 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         if ([entity isAttributeName:propName])
         {
             if (propValue !== nil)
+            {
+                // When a baseline (coordinator row cache) is available, skip
+                // attribute values that haven't actually changed from the last
+                // server-fetched state.  This prevents spurious updates caused
+                // by UI bindings that re-set a field to its existing value.
+                if (changedDataOnly && baselineData !== nil)
+                {
+                    var baselineValue = [baselineData objectForKey:propName];
+                    if ([self _valuesAreEqual:propValue and:baselineValue])
+                        continue;
+                }
                 [valueDict setObject:propValue forKey:propName];
+            }
         }
         else if ([entity isRelationshipName:propName])
         {
@@ -1575,6 +1599,27 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         return [CPDictionary dictionaryWithObject:[self _tempKeyForObjectID:objectID]
                                            forKey:@"temp"];
     return [self _serverIDForObjectID:objectID];
+}
+
+/*!
+    Compare two property values for equality.
+
+    Handles nil, ObjJ objects (via isEqual:), and JS primitives (via ===).
+    Used to detect whether an attribute value in _changedData has actually
+    changed relative to the last-known server state (baseline).
+*/
+- (BOOL)_valuesAreEqual:(id)a and:(id)b
+{
+    if (a === b)
+        return YES;
+    if (a === nil || a === null || a === undefined)
+        return (b === nil || b === null || b === undefined);
+    if (b === nil || b === null || b === undefined)
+        return NO;
+    // Use isEqual: for ObjJ objects (handles CPDate, CPString, etc.)
+    if (typeof a === 'object' && [a respondsToSelector:@selector(isEqual:)])
+        return [a isEqual:b];
+    return NO;
 }
 
 /*!

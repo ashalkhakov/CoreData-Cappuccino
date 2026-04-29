@@ -635,10 +635,126 @@
                     + @"data is an inverse to-many that was never loaded from the server"];
 }
 
+/*!
+    Verifies that _encodeObjectForUpdate: omits attributes whose value in
+    _changedData matches the coordinator row-cache baseline (i.e. the value
+    was re-set by UI bindings to the same thing it already was, not actually
+    edited by the user).
 
-// ---------------------------------------------------------------------------
-// Helper
-// ---------------------------------------------------------------------------
+    Scenario: an Address is fetched from the server; a form opens and UI
+    bindings call setValue:forKey: for every bound field — setting them to the
+    same values already stored.  All attributes end up in _changedData, but
+    none differ from the coordinator cache.  The Address must NOT appear in the
+    update payload.
+*/
+- (void)testEncodeObjectForUpdate_skipsAttributesUnchangedFromBaseline
+{
+    // Build a store wired to a coordinator so cacheRowData: is reachable
+    var config      = [CPDictionary dictionaryWithObject:@"http://localhost/OrdersAPI"
+                                                  forKey:CPHTTPStoreBaseURL],
+        store       = [[CPHTTPStore alloc] initWithStoreID:@"test" configuration:config],
+        coordinator = [[CPPersistentStoreCoordinator alloc] init];
+    [store setStoreCoordinator:coordinator];
+
+    var entity = [[CPEntityDescription alloc] init];
+    [entity setName:@"Address"];
+    [entity addAttributeWithName:@"addressID" classValue:@"CPNumber" typeValue:CPDInteger32AttributeType optional:NO];
+    [entity addAttributeWithName:@"street1"   classValue:@"CPString" typeValue:CPDStringAttributeType    optional:YES];
+    [entity addAttributeWithName:@"city"      classValue:@"CPString" typeValue:CPDStringAttributeType    optional:YES];
+
+    var globalID = @"Address|addressID=482;",
+        obj   = [entity createObject],
+        objID = [[CPManagedObjectID alloc] initWithEntity:entity
+                                                 globalID:globalID
+                                              isTemporary:NO];
+    [obj setObjectID:objID];
+    [obj setFault:NO];
+
+    // Simulate server fetch: _data has all fields
+    var serverData = [CPMutableDictionary dictionaryWithObjectsAndKeys:
+                          482,          @"addressID",
+                          @"42 Oak Ave", @"street1",
+                          @"Shelbyville", @"city"];
+    [obj _setData:serverData];
+
+    // Coordinator row-cache holds the same data (set when the object was fetched)
+    [coordinator cacheRowData:serverData forGlobalID:globalID];
+
+    // UI bindings re-set all fields to the same values — this fills _changedData
+    // with values identical to the server state.
+    var changedData = [CPMutableDictionary dictionaryWithObjectsAndKeys:
+                           482,           @"addressID",
+                           @"42 Oak Ave", @"street1",
+                           @"Shelbyville", @"city"];
+    [obj _setChangedData:changedData];
+
+    var encoded = [store _encodeObjectForUpdate:obj];
+
+    [self assertNull:encoded
+             message:@"_encodeObjectForUpdate: should return nil when all _changedData "
+                    + @"values match the coordinator row-cache baseline"];
+}
+
+/*!
+    Verifies that _encodeObjectForUpdate: includes only the attribute that was
+    GENUINELY changed, even when _changedData also contains other attributes
+    that were re-set to their existing (baseline) values.
+*/
+- (void)testEncodeObjectForUpdate_includesOnlyTrulyChangedAttributeWhenBaselinePresent
+{
+    var config      = [CPDictionary dictionaryWithObject:@"http://localhost/OrdersAPI"
+                                                  forKey:CPHTTPStoreBaseURL],
+        store       = [[CPHTTPStore alloc] initWithStoreID:@"test" configuration:config],
+        coordinator = [[CPPersistentStoreCoordinator alloc] init];
+    [store setStoreCoordinator:coordinator];
+
+    var entity = [[CPEntityDescription alloc] init];
+    [entity setName:@"Customer"];
+    [entity addAttributeWithName:@"customerID" classValue:@"CPNumber" typeValue:CPDInteger32AttributeType optional:NO];
+    [entity addAttributeWithName:@"fullName"   classValue:@"CPString" typeValue:CPDStringAttributeType    optional:NO];
+    [entity addAttributeWithName:@"phone"      classValue:@"CPString" typeValue:CPDStringAttributeType    optional:YES];
+
+    var globalID = @"Customer|customerID=1;",
+        obj   = [entity createObject],
+        objID = [[CPManagedObjectID alloc] initWithEntity:entity
+                                                 globalID:globalID
+                                              isTemporary:NO];
+    [obj setObjectID:objID];
+    [obj setFault:NO];
+
+    var serverData = [CPMutableDictionary dictionaryWithObjectsAndKeys:
+                          1,             @"customerID",
+                          @"Alice",      @"fullName",
+                          @"555-0100",   @"phone"];
+    [obj _setData:serverData];
+    [coordinator cacheRowData:serverData forGlobalID:globalID];
+
+    // fullName was genuinely changed; phone and customerID were re-set to their
+    // existing values by UI bindings.
+    var changedData = [CPMutableDictionary dictionaryWithObjectsAndKeys:
+                           1,          @"customerID",
+                           @"Alice B.", @"fullName",
+                           @"555-0100", @"phone"];
+    [obj _setChangedData:changedData];
+
+    var encoded = [store _encodeObjectForUpdate:obj];
+
+    [self assertNotNull:encoded
+                message:@"_encodeObjectForUpdate: should produce a non-nil result "
+                       + @"when at least one attribute genuinely changed"];
+
+    var values = [encoded objectForKey:@"values"];
+    [self assert:1 equals:[values count]
+         message:@"only the genuinely changed attribute should be encoded"];
+    [self assert:@"Alice B." equals:[values objectForKey:@"fullName"]
+         message:@"the changed 'fullName' should be encoded"];
+    [self assertNull:[values objectForKey:@"phone"]
+             message:@"'phone' was re-set to its baseline value and must be omitted"];
+    [self assertNull:[values objectForKey:@"customerID"]
+             message:@"'customerID' was re-set to its baseline value and must be omitted"];
+}
+
+
 
 - (CPHTTPStore)_makeStore
 {
