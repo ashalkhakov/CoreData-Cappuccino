@@ -1099,9 +1099,24 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
 
 - (CPString)_globalIDStringForServerID:(id)serverID
 {
+    if (!serverID) return nil;
+
+    // Temp IDs (e.g. { "temp": "invoice-0" }) are returned by the server for
+    // proposal / unsaved objects.  They have no entity+pk pair; just map them
+    // to the conventional "temp:<key>" string so every temp object gets a
+    // unique globalID and the allMaterialized lookup by objectsByID key works.
+    var temp;
+    if (serverID.isa && [serverID isKindOfClass:[CPDictionary class]])
+        temp = [serverID objectForKey:@"temp"];
+    else
+        temp = (typeof serverID === "object") ? (serverID.temp || null) : null;
+
+    if (temp)
+        return @"temp:" + temp;
+
     var entity, pk;
 
-    if (serverID && serverID.isa && [serverID isKindOfClass:[CPDictionary class]])
+    if (serverID.isa && [serverID isKindOfClass:[CPDictionary class]])
     {
         entity = [serverID objectForKey:@"entity"] || @"";
         pk     = [serverID objectForKey:@"pk"]     || {};

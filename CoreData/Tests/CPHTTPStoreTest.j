@@ -71,7 +71,154 @@
           equals:[store _globalIDStringForServerID:serverID]];
 }
 
-- (void)testServerIDRoundTrip
+- (void)testGlobalIDStringTempID
+{
+    // Plain JS-object temp ID (as parsed from a server JSON response)
+    var store    = [self _makeStore],
+        serverID = {"temp": "invoice-0"};
+
+    [self assert:@"temp:invoice-0"
+          equals:[store _globalIDStringForServerID:serverID]
+         message:@"temp ID should map to 'temp:<key>'"];
+}
+
+- (void)testGlobalIDStringTempIDObjJDict
+{
+    // ObjJ dictionary temp ID (as might be constructed in client code)
+    var store    = [self _makeStore],
+        serverID = @{ @"temp": @"item-1" };
+
+    [self assert:@"temp:item-1"
+          equals:[store _globalIDStringForServerID:serverID]
+         message:@"ObjJ-dict temp ID should map to 'temp:<key>'"];
+}
+
+/*!
+    Verifies that a server response that uses temp IDs (isProposal:true) is
+    materialised correctly:
+    – Each object in objectsByID gets its own unique CPManagedObject (not a
+      single collision object shared by all three).
+    – Only root objects are present in the root list; prefetched relationship
+      targets (lineItems) are NOT promoted to root results.
+
+    This is a regression test for the bug where _globalIDStringForServerID:
+    returned "|" for every temp ID, causing all three objects to collide on
+    the same globalID in the context registry, and the same merged object to
+    appear 3 times in the result.
+*/
+- (void)testFetchMaterialisationWithTempIDs_rootObjectsDistinctFromPrefetched
+{
+    // Build a minimal model with Invoice and InvoiceLineItem entities
+    var store  = [self _makeStore],
+        model  = [[CPManagedObjectModel alloc] init];
+
+    var invoiceEntity = [[CPEntityDescription alloc] init];
+    [invoiceEntity setName:@"Invoice"];
+    [invoiceEntity addAttributeWithName:@"status"   classValue:@"CPString" typeValue:CPDStringAttributeType optional:YES];
+    [invoiceEntity addAttributeWithName:@"dueDate"  classValue:@"CPString" typeValue:CPDStringAttributeType optional:YES];
+    [invoiceEntity addRelationshipWithName:@"lineItems" toMany:YES  optional:YES deleteRule:0 destination:@"InvoiceLineItem"];
+
+    var lineItemEntity = [[CPEntityDescription alloc] init];
+    [lineItemEntity setName:@"InvoiceLineItem"];
+    [lineItemEntity addAttributeWithName:@"lineDescription" classValue:@"CPString" typeValue:CPDStringAttributeType optional:YES];
+    [lineItemEntity addAttributeWithName:@"quantity"        classValue:@"CPNumber" typeValue:CPDInteger32AttributeType optional:YES];
+    [lineItemEntity addRelationshipWithName:@"invoice" toMany:NO optional:YES deleteRule:0 destination:@"Invoice"];
+
+    [model addEntity:invoiceEntity];
+    [model addEntity:lineItemEntity];
+
+    // Simulate the proposal server response (objectsByID uses "temp:X" keys)
+    var invoiceServerObj = {
+        "entity": "Invoice",
+        "id": {"temp": "invoice-0"},
+        "values": {"status": "draft", "dueDate": "2026-06-05"},
+        "relationships": {
+            "lineItems": [{"temp": "item-0"}, {"temp": "item-1"}]
+        }
+    };
+    var item0ServerObj = {
+        "entity": "InvoiceLineItem",
+        "id": {"temp": "item-0"},
+        "values": {"lineDescription": "sku1", "quantity": 45},
+        "relationships": {}
+    };
+    var item1ServerObj = {
+        "entity": "InvoiceLineItem",
+        "id": {"temp": "item-1"},
+        "values": {"lineDescription": "sku2", "quantity": 5},
+        "relationships": {}
+    };
+
+    var context = [[CPManagedObjectContext alloc] init];
+    [context setModel:model];
+    [context setStore:store];
+
+    // First pass: materialise all objects
+    var allMaterialized = [[CPMutableDictionary alloc] init];
+    var objects = {
+        "temp:invoice-0": invoiceServerObj,
+        "temp:item-0":    item0ServerObj,
+        "temp:item-1":    item1ServerObj
+    };
+
+    for (var key in objects)
+    {
+        if (!objects.hasOwnProperty(key)) continue;
+        var matObj = [store _materializeServerObject:objects[key] context:context];
+        if (matObj !== nil)
+            [allMaterialized setObject:matObj forKey:key];
+    }
+
+    // Verify: each entry in allMaterialized is a distinct object with the
+    // correct entity and a unique globalID.
+    [self assert:3 equals:[allMaterialized count]
+         message:@"all three server objects should materialise to distinct managed objects"];
+
+    var invoiceMat = [allMaterialized objectForKey:@"temp:invoice-0"],
+        item0Mat   = [allMaterialized objectForKey:@"temp:item-0"],
+        item1Mat   = [allMaterialized objectForKey:@"temp:item-1"];
+
+    [self assertNotNull:invoiceMat message:@"invoice object should be in allMaterialized"];
+    [self assertNotNull:item0Mat   message:@"item-0 object should be in allMaterialized"];
+    [self assertNotNull:item1Mat   message:@"item-1 object should be in allMaterialized"];
+
+    [self assert:@"Invoice"         equals:[[invoiceMat entity] name] message:@"invoice entity name"];
+    [self assert:@"InvoiceLineItem" equals:[[item0Mat   entity] name] message:@"item-0 entity name"];
+    [self assert:@"InvoiceLineItem" equals:[[item1Mat   entity] name] message:@"item-1 entity name"];
+
+    [self assert:@"temp:invoice-0" equals:[[invoiceMat objectID] globalID] message:@"invoice globalID"];
+    [self assert:@"temp:item-0"    equals:[[item0Mat   objectID] globalID] message:@"item-0 globalID"];
+    [self assert:@"temp:item-1"    equals:[[item1Mat   objectID] globalID] message:@"item-1 globalID"];
+
+    // Verify root filtering: only Invoice is a root object
+    var rootIDs     = [{"temp": "invoice-0"}],
+        resultArray = [[CPMutableArray alloc] init],
+        inRoot      = [[CPMutableSet alloc] init];
+
+    for (var i = 0; i < rootIDs.length; i++)
+    {
+        var rootKey = [store _globalIDStringForServerID:rootIDs[i]];
+        var rootObj = [allMaterialized objectForKey:rootKey];
+        if (rootObj !== nil)
+        {
+            [resultArray addObject:rootObj];
+            [inRoot addObject:rootObj];
+        }
+    }
+    var matEnum = [allMaterialized objectEnumerator];
+    var matObj;
+    while ((matObj = [matEnum nextObject]))
+    {
+        if (![inRoot containsObject:matObj])
+            [resultArray addObject:matObj];
+    }
+
+    [self assert:3 equals:[resultArray count]
+         message:@"resultArray should have 3 items total (1 root + 2 prefetched)"];
+    [self assertSame:invoiceMat equals:[resultArray objectAtIndex:0]
+             message:@"the first (root) result must be the Invoice object"];
+}
+
 {
     var store    = [self _makeStore],
         serverID = @{ @"entity": @"Order", @"pk": @{ @"orderID": 245 } },
