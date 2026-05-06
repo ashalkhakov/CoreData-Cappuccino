@@ -219,6 +219,7 @@
              message:@"the first (root) result must be the Invoice object"];
 }
 
+- (void)testGlobalIDRoundTripToServerID
 {
     var store    = [self _makeStore],
         serverID = @{ @"entity": @"Order", @"pk": @{ @"orderID": 245 } },
