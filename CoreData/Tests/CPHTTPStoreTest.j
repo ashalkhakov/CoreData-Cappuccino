@@ -149,9 +149,10 @@
         "relationships": {}
     };
 
-    var context = [[CPManagedObjectContext alloc] init];
-    [context setModel:model];
-    [context setStore:store];
+    var coordinator = [[CPPersistentStoreCoordinator alloc] initWithManagedObjectModel:model];
+    [store setStoreCoordinator:coordinator];
+    [coordinator setPersistentStore:store];
+    var context = [[CPManagedObjectContext alloc] initWithPersistentStoreCoordinator:coordinator];
 
     // First pass: materialise all objects
     var allMaterialized = [[CPMutableDictionary alloc] init];
