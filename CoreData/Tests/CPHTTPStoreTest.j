@@ -14,6 +14,15 @@
 {
 }
 
+/*!
+    Assert that \c expected and \c actual are the exact same object instance
+    (reference identity, i.e. \c ===).  Fails with \c aMessage if they differ.
+*/
+- (void)assertSame:(id)expected equals:(id)actual message:(CPString)aMessage
+{
+    [self assertTrue:(expected === actual) message:aMessage];
+}
+
 
 // ---------------------------------------------------------------------------
 // CPHTTPPredicateEncoder – raw dictionary pass-through
