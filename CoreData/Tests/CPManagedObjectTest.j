@@ -235,12 +235,12 @@
 - (CPManagedObjectContext)_orderInvoiceContextOrderEntity:(CPEntityDescription@ref)outOrderEntity
                                             invoiceEntity:(CPEntityDescription@ref)outInvEntity
 {
-    var model       = [[CPManagedObjectModel alloc] init],
-        orderEntity = [[CPEntityDescription alloc] init],
-        invEntity   = [[CPEntityDescription alloc] init];
+    var model         = [[CPManagedObjectModel alloc] init],
+        orderEntity   = [[CPEntityDescription alloc] init],
+        invoiceEntity = [[CPEntityDescription alloc] init];
 
-    [orderEntity setName:@"Order"];
-    [invEntity   setName:@"Invoice"];
+    [orderEntity   setName:@"Order"];
+    [invoiceEntity setName:@"Invoice"];
 
     // Order.invoices — to-many, inverse = "order"
     [orderEntity addRelationshipWithName:@"invoices"
@@ -248,24 +248,23 @@
                                 optional:YES
                               deleteRule:0
                              destination:@"Invoice"];
-    [[orderEntity relationshipsByName] objectForKey:@"invoices"];
     [[[orderEntity relationshipsByName] objectForKey:@"invoices"]
         setInversePropertyName:@"order"];
 
     // Invoice.order — to-one, inverse = "invoices"
-    [invEntity addRelationshipWithName:@"order"
+    [invoiceEntity addRelationshipWithName:@"order"
                                 toMany:NO
                               optional:YES
                             deleteRule:0
                            destination:@"Order"];
-    [[[invEntity relationshipsByName] objectForKey:@"order"]
+    [[[invoiceEntity relationshipsByName] objectForKey:@"order"]
         setInversePropertyName:@"invoices"];
 
     [model addEntity:orderEntity];
-    [model addEntity:invEntity];
+    [model addEntity:invoiceEntity];
 
     @deref(outOrderEntity) = orderEntity;
-    @deref(outInvEntity)   = invEntity;
+    @deref(outInvEntity)   = invoiceEntity;
 
     return [Tools testContextWithModel:model storeType:nil];
 }
