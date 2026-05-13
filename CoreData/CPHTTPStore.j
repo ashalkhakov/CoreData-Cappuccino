@@ -1201,12 +1201,17 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         return nil;
     }
 
-    var serverID = serverObj.id || serverObj[@"id"],
-        globalID = [self _globalIDStringForServerID:serverID],
-        searchID = [[CPManagedObjectID alloc] initWithEntity:entity
-                                                    globalID:globalID
-                                                 isTemporary:NO],
-        existing = [context objectRegisteredForID:searchID],
+    var serverID  = serverObj.id || serverObj[@"id"],
+        globalID  = [self _globalIDStringForServerID:serverID],
+        // Temp IDs (from proposal / isProposal:true responses) must be treated
+        // as new inserted objects so a subsequent save sends them in "inserted",
+        // not "updated".  Detect them by the "temp:…" global-ID prefix that
+        // _globalIDStringForServerID: produces for server IDs with a "temp" key.
+        isTempID  = (globalID !== nil && globalID.indexOf(@"temp:") === 0),
+        searchID  = [[CPManagedObjectID alloc] initWithEntity:entity
+                                                     globalID:globalID
+                                                  isTemporary:isTempID],
+        existing  = [context objectRegisteredForID:searchID],
         obj;
 
     if (existing !== nil)
@@ -1214,12 +1219,19 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     else
     {
         obj = [entity createObject];
-        [obj setContext:context];
         var objID = [[CPManagedObjectID alloc] initWithEntity:entity
                                                      globalID:globalID
-                                                  isTemporary:NO];
+                                                  isTemporary:isTempID];
         [objID setPersistentStore:self];
         [obj setObjectID:objID];
+        // For proposal objects the context must know they are new so that a
+        // save sends them to "inserted" rather than "updated".  For regular
+        // fetched objects we just set the context reference directly without
+        // registering them as inserted.
+        if (isTempID)
+            [context insertObject:obj];
+        else
+            [obj setContext:context];
     }
 
     var values    = serverObj.values || serverObj[@"values"] || {},
@@ -1607,10 +1619,17 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
 
 - (CPDictionary)_refForObjectID:(CPManagedObjectID)objectID
 {
-    // Use the temp key when the ID is temporary OR when it has no server-assigned
-    // globalID yet (i.e. obtainPermanentIDsForObjects: promoted isTemporary→NO
-    // as a placeholder, but the server hasn't responded with a real ID yet).
-    if ([objectID isTemporary] || ![objectID validatedGlobalID])
+    // Use the temp key when:
+    // (a) the ID is still flagged as temporary, OR
+    // (b) globalID is nil/empty (obtainPermanentIDsForObjects: ran but the
+    //     server hasn't responded with a real ID yet), OR
+    // (c) globalID starts with "temp:" – the object came from a proposal
+    //     response; obtainPermanentIDsForObjects: already cleared isTemporary
+    //     but the real server-assigned ID is not yet known.
+    var globalID = [objectID globalID];
+    if (   [objectID isTemporary]
+        || globalID === nil || [globalID length] == 0
+        || [globalID hasPrefix:@"temp:"])
         return [CPDictionary dictionaryWithObject:[self _tempKeyForObjectID:objectID]
                                            forKey:@"temp"];
     return [self _serverIDForObjectID:objectID];

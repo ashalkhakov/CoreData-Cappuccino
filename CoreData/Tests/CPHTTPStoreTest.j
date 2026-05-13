@@ -14,16 +14,6 @@
 {
 }
 
-/*!
-    Assert that \c expected and \c actual are the exact same object instance
-    (reference identity, i.e. \c ===).  Fails with \c aMessage if they differ.
-*/
-- (void)assertSame:(id)expected equals:(id)actual message:(CPString)aMessage
-{
-    [self assertTrue:(expected === actual) message:aMessage];
-}
-
-
 // ---------------------------------------------------------------------------
 // CPHTTPPredicateEncoder – raw dictionary pass-through
 // ---------------------------------------------------------------------------
@@ -225,8 +215,20 @@
 
     [self assert:3 equals:[resultArray count]
          message:@"resultArray should have 3 items total (1 root + 2 prefetched)"];
-    [self assertSame:invoiceMat equals:[resultArray objectAtIndex:0]
-             message:@"the first (root) result must be the Invoice object"];
+    [self assert:invoiceMat same:[resultArray objectAtIndex:0]
+         message:@"the first (root) result must be the Invoice object"];
+
+    // Verify that temp-ID (proposal) objects are tracked as inserted so a
+    // subsequent save sends them in the "inserted" array, not "updated".
+    var inserted = [context insertedObjects];
+    [self assert:3 equals:[inserted count]
+         message:@"all three proposal objects should be in the inserted set"];
+    [self assertTrue:[inserted containsObject:invoiceMat]
+         message:@"invoice should be in the inserted set"];
+    [self assertTrue:[inserted containsObject:item0Mat]
+         message:@"item-0 should be in the inserted set"];
+    [self assertTrue:[inserted containsObject:item1Mat]
+         message:@"item-1 should be in the inserted set"];
 }
 
 - (void)testGlobalIDRoundTripToServerID
