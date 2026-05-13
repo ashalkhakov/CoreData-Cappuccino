@@ -343,10 +343,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
             {
                 propertyObject = [[CPMutableSet alloc] init];
             }
-            else
-            {
-                [propertyObject addObject: tmpObjectID];
-            }
+            [propertyObject addObject: tmpObjectID];
 
             // if([propertyObject containsObject:tmpObjectID])
             //     return;
