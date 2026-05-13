@@ -221,4 +221,152 @@
              message:@"Existing object with nil unchanged mandatory attribute should pass validation"];
 }
 
+
+// ---------------------------------------------------------------------------
+// addObject:toBothSideOfRelationship: — bug fix for nil to-many set
+// ---------------------------------------------------------------------------
+
+/*!
+    Build a two-entity Order/Invoice model and return the context.
+    Order.invoices  (to-many, inverse = "order")
+    Invoice.order   (to-one,  inverse = "invoices")
+    On return, *outOrderEntity / *outInvEntity point to the entity descriptions.
+*/
+- (CPManagedObjectContext)_orderInvoiceContextOrderEntity:(CPEntityDescription@ref)outOrderEntity
+                                            invoiceEntity:(CPEntityDescription@ref)outInvEntity
+{
+    var model       = [[CPManagedObjectModel alloc] init],
+        orderEntity = [[CPEntityDescription alloc] init],
+        invEntity   = [[CPEntityDescription alloc] init];
+
+    [orderEntity setName:@"Order"];
+    [invEntity   setName:@"Invoice"];
+
+    // Order.invoices — to-many, inverse = "order"
+    [orderEntity addRelationshipWithName:@"invoices"
+                                  toMany:YES
+                                optional:YES
+                              deleteRule:0
+                             destination:@"Invoice"];
+    [[orderEntity relationshipsByName] objectForKey:@"invoices"];
+    [[[orderEntity relationshipsByName] objectForKey:@"invoices"]
+        setInversePropertyName:@"order"];
+
+    // Invoice.order — to-one, inverse = "invoices"
+    [invEntity addRelationshipWithName:@"order"
+                                toMany:NO
+                              optional:YES
+                            deleteRule:0
+                           destination:@"Order"];
+    [[[invEntity relationshipsByName] objectForKey:@"order"]
+        setInversePropertyName:@"invoices"];
+
+    [model addEntity:orderEntity];
+    [model addEntity:invEntity];
+
+    @deref(outOrderEntity) = orderEntity;
+    @deref(outInvEntity)   = invEntity;
+
+    return [Tools testContextWithModel:model storeType:nil];
+}
+
+/*!
+    Core bug: when Order._data["invoices"] is nil (the to-many set has never
+    been populated), addObject:toBothSideOfRelationship: must still add the
+    invoice objectID to the newly-created set rather than leaving it empty.
+*/
+- (void)testAddObjectToBothSide_toMany_nilSet_objectAdded
+{
+    var orderEntity, invEntity;
+    var ctx = [self _orderInvoiceContextOrderEntity:@orderEntity
+                                      invoiceEntity:@invEntity];
+
+    var order   = [orderEntity createObject];
+    var invoice = [invEntity createObject];
+
+    [ctx insertObject:order];
+    [ctx insertObject:invoice];
+
+    // Precondition: invoices set is nil (never populated).
+    [self assertNull:[[order data] objectForKey:@"invoices"]
+             message:@"order._data['invoices'] should be nil before the call"];
+
+    // Act: add invoice to the order's to-many side.
+    [order addObject:invoice toBothSideOfRelationship:@"invoices"];
+
+    // Assert: the set must now contain the invoice's objectID.
+    var invoicesSet = [[order data] objectForKey:@"invoices"];
+    [self assertNotNull:invoicesSet
+                message:@"order._data['invoices'] must be non-nil after addObject:toBothSideOfRelationship:"];
+    [self assert:1
+          equals:[invoicesSet count]
+         message:@"order._data['invoices'] must contain exactly one entry after the call"];
+}
+
+/*!
+    When Order._data["invoices"] is already a non-empty set, the existing code
+    path (the else branch) still works correctly after the refactor.
+*/
+- (void)testAddObjectToBothSide_toMany_existingSet_objectAdded
+{
+    var orderEntity, invEntity;
+    var ctx = [self _orderInvoiceContextOrderEntity:@orderEntity
+                                      invoiceEntity:@invEntity];
+
+    var order    = [orderEntity createObject];
+    var invoice1 = [invEntity createObject];
+    var invoice2 = [invEntity createObject];
+
+    [ctx insertObject:order];
+    [ctx insertObject:invoice1];
+    [ctx insertObject:invoice2];
+
+    // Pre-populate the set with invoice1.
+    var existing = [[CPMutableSet alloc] init];
+    [existing addObject:[invoice1 objectID]];
+    [[order data] setObject:existing forKey:@"invoices"];
+
+    // Act: add invoice2.
+    [order addObject:invoice2 toBothSideOfRelationship:@"invoices"];
+
+    var invoicesSet = [[order data] objectForKey:@"invoices"];
+    [self assert:2
+          equals:[invoicesSet count]
+         message:@"order._data['invoices'] must contain two entries after adding a second invoice"];
+}
+
+/*!
+    End-to-end test via the public API: calling [invoice setValue:order forKey:@"order"]
+    must populate order._data["invoices"] with invoice's objectID even when
+    the order has never had any invoices before (nil to-many set).
+    This is the exact scenario described in the bug report.
+*/
+- (void)testAddObjectToBothSide_viaSetValueForKey_inverseToManyPopulated
+{
+    var orderEntity, invEntity;
+    var ctx = [self _orderInvoiceContextOrderEntity:@orderEntity
+                                      invoiceEntity:@invEntity];
+
+    var order   = [orderEntity createObject];
+    var invoice = [invEntity createObject];
+
+    [ctx insertObject:order];
+    [ctx insertObject:invoice];
+
+    // Precondition: order has no invoices.
+    [self assertNull:[[order data] objectForKey:@"invoices"]
+             message:@"order._data['invoices'] should be nil before setValue:forKey:"];
+
+    // Act: set invoice.order = order via the public API.
+    [invoice setValue:order forKey:@"order"];
+
+    // Assert: order.invoices must now contain exactly one entry.
+    var invoicesSet = [[order data] objectForKey:@"invoices"];
+    [self assertNotNull:invoicesSet
+                message:@"order._data['invoices'] must be non-nil after [invoice setValue:order forKey:@\"order\"]"];
+    [self assert:1
+          equals:[invoicesSet count]
+         message:@"[[order invoices] count] should be 1 — this was the failing assertion in the bug report"];
+}
+
 @end
