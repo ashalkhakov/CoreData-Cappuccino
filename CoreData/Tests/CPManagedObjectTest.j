@@ -292,9 +292,8 @@
     [[order data] removeObjectForKey:@"invoices"];
 
     // Precondition: invoices set is nil (never populated).
-    [self assert:0
-          equals:[[[order data] objectForKey:@"invoices"] count]
-         message:@"order._data['invoices'] should be nil before the call"];
+    [self assertFalse:[[[order data] allKeys] containsObject:@"invoices"]
+             message:@"order._data['invoices'] should be absent before the call"];
 
     // Act: add invoice to the order's to-many side.
     [order addObject:invoice toBothSideOfRelationship:@"invoices"];
@@ -362,9 +361,8 @@
     [[order data] removeObjectForKey:@"invoices"];
 
     // Precondition: order has no invoices.
-    [self assert:0
-          equals:[[[order data] objectForKey:@"invoices"] count]
-         message:@"order._data['invoices'] should be nil before setValue:forKey:"];
+    [self assertFalse:[[[order data] allKeys] containsObject:@"invoices"]
+             message:@"order._data['invoices'] should be absent before setValue:forKey:"];
 
     // Act: set invoice.order = order via the public API.
     [invoice setValue:order forKey:@"order"];
