@@ -232,8 +232,8 @@
     Invoice.order   (to-one,  inverse = "invoices")
     On return, *outOrderEntity / *outInvEntity point to the entity descriptions.
 */
-- (CPManagedObjectContext)_orderInvoiceContextOrderEntity:(CPEntityDescription@ref)outOrderEntity
-                                            invoiceEntity:(CPEntityDescription@ref)outInvEntity
+- (CPManagedObjectContext)_orderInvoiceContextOrderEntity:(@ref)outOrderEntity
+                                            invoiceEntity:(@ref)outInvEntity
 {
     var model         = [[CPManagedObjectModel alloc] init],
         orderEntity   = [[CPEntityDescription alloc] init],
