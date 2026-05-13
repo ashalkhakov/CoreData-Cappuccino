@@ -1207,7 +1207,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
         // as new inserted objects so a subsequent save sends them in "inserted",
         // not "updated".  Detect them by the "temp:…" global-ID prefix that
         // _globalIDStringForServerID: produces for server IDs with a "temp" key.
-        isTempID  = (globalID !== nil && globalID.indexOf(@"temp:") === 0),
+        isTempID  = (globalID !== nil && [globalID hasPrefix:@"temp:"]),
         searchID  = [[CPManagedObjectID alloc] initWithEntity:entity
                                                      globalID:globalID
                                                   isTemporary:isTempID],
@@ -1628,7 +1628,7 @@ CPErrorLocalizedDescriptionKey = @"CPErrorLocalizedDescriptionKey";
     //     but the real server-assigned ID is not yet known.
     var globalID = [objectID globalID];
     if (   [objectID isTemporary]
-        || globalID === nil || [globalID length] == 0
+        || globalID === nil || [globalID length] === 0
         || [globalID hasPrefix:@"temp:"])
         return [CPDictionary dictionaryWithObject:[self _tempKeyForObjectID:objectID]
                                            forKey:@"temp"];
