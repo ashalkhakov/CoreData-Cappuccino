@@ -286,6 +286,11 @@
     [ctx insertObject:order];
     [ctx insertObject:invoice];
 
+    // Simulate a server-fetched object where the to-many side was absent
+    // (_resetObjectDataForProperties initialises it to an empty set, but
+    // objects hydrated from the server may have no "invoices" key at all).
+    [[order data] removeObjectForKey:@"invoices"];
+
     // Precondition: invoices set is nil (never populated).
     [self assertNull:[[order data] objectForKey:@"invoices"]
              message:@"order._data['invoices'] should be nil before the call"];
@@ -351,6 +356,9 @@
 
     [ctx insertObject:order];
     [ctx insertObject:invoice];
+
+    // Simulate a server-fetched object where the to-many side was absent.
+    [[order data] removeObjectForKey:@"invoices"];
 
     // Precondition: order has no invoices.
     [self assertNull:[[order data] objectForKey:@"invoices"]
