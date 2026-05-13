@@ -277,8 +277,8 @@
 - (void)testAddObjectToBothSide_toMany_nilSet_objectAdded
 {
     var orderEntity, invEntity;
-    var ctx = [self _orderInvoiceContextOrderEntity:@orderEntity
-                                      invoiceEntity:@invEntity];
+    var ctx = [self _orderInvoiceContextOrderEntity:@ref(orderEntity)
+                                      invoiceEntity:@ref(invEntity)];
 
     var order   = [orderEntity createObject];
     var invoice = [invEntity createObject];
@@ -309,8 +309,8 @@
 - (void)testAddObjectToBothSide_toMany_existingSet_objectAdded
 {
     var orderEntity, invEntity;
-    var ctx = [self _orderInvoiceContextOrderEntity:@orderEntity
-                                      invoiceEntity:@invEntity];
+    var ctx = [self _orderInvoiceContextOrderEntity:@ref(orderEntity)
+                                      invoiceEntity:@ref(invEntity)];
 
     var order    = [orderEntity createObject];
     var invoice1 = [invEntity createObject];
@@ -343,8 +343,8 @@
 - (void)testAddObjectToBothSide_viaSetValueForKey_inverseToManyPopulated
 {
     var orderEntity, invEntity;
-    var ctx = [self _orderInvoiceContextOrderEntity:@orderEntity
-                                      invoiceEntity:@invEntity];
+    var ctx = [self _orderInvoiceContextOrderEntity:@ref(orderEntity)
+                                      invoiceEntity:@ref(invEntity)];
 
     var order   = [orderEntity createObject];
     var invoice = [invEntity createObject];
