@@ -181,19 +181,21 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
                     var regObject = [_context objectRegisteredForID: aValue];
                     if(regObject == nil)
                     {
-                        //if the regObject is nil we remove it
+                        // Try to fetch the object from the store.
                         regObject = [_context updateObjectWithID:aValue mergeChanges:YES];
                         if(regObject != nil)
                         {
+                            // The store returned a refreshed object with a (possibly
+                            // different) permanent ID — update the stored reference.
                             [values removeObject:aValue];
                             [values addObject:[regObject objectID]];
                             [self _setChangedObject:values forKey:aKey];
                         }
-                        else
-                        {
-                            [values removeObject:aValue];
-                            [self _setChangedObject:values forKey:aKey];
-                        }
+                        // When the object is still unresolvable (e.g. it was registered
+                        // via setContext: only and _registeredObjects hasn't been updated
+                        // yet), keep the ID in _data so it can be resolved later.
+                        // Do NOT evict it here — a permanent removal would cause the
+                        // relationship to lose track of the object permanently.
                     }
                     if(regObject != nil)
                         [resultSet addObject: regObject];
@@ -208,15 +210,13 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
             if(regObject == nil && [_data objectForKey:aKey] != nil)
             {
                 regObject = [_context updateObjectWithID:[_data objectForKey:aKey] mergeChanges:YES];
-                //if the regObject is nil we remove it
                 if(regObject != nil)
                 {
+                    // The store returned a refreshed permanent ID — update the reference.
                     [self _setChangedObject:[regObject objectID] forKey:aKey];
                 }
-                else
-                {
-                    [self _setChangedObject:nil forKey:aKey];
-                }
+                // When the object is still unresolvable, keep the stored ID so it
+                // can be resolved once the object is fully registered.
             }
             [self didAccessValueForKey:aKey];
             return regObject;
