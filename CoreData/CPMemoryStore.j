@@ -108,6 +108,37 @@
 {
 }
 
+/*!
+    Execute a fetch request against the in-memory object graph.
+
+    Returns the subset of objects currently registered in \a aContext whose
+    entity matches \c [aFetchRequest entity].  A nil entity in the request is
+    treated as "any entity" and all registered objects are returned.
+
+    This method is required by \c CPManagedObjectContext._executeStoreFetchRequest:
+    and by the synchronous fallback path of
+    \c CPManagedObjectContext.executeStoreFetchRequestAsync:completionHandler:.
+    Without it, both of those paths crash with an unrecognised-selector error
+    when the store is a \c CPMemoryStore.
+*/
+- (CPSet)executeFetchRequest:(CPFetchRequest)aFetchRequest
+      inManagedObjectContext:(CPManagedObjectContext)aContext
+                      error:(@ref)error
+{
+    var entity = [aFetchRequest entity],
+        all    = [aContext registeredObjects],
+        result = [[CPMutableSet alloc] init],
+        e      = [all objectEnumerator],
+        obj;
+
+    while ((obj = [e nextObject]))
+    {
+        if (entity === nil || [[obj entity] isEqual:entity])
+            [result addObject:obj];
+    }
+    return result;
+}
+
 /*
  *	The CPManagedObjectContext call this method through the instantiation
  *	and update and registrate the objects from reponse
