@@ -304,6 +304,43 @@
          message:@"person delete rule wrong"];
 }
 
+/*!
+    Verifies that the inverseName XML attribute on a relationship element is
+    parsed and stored in inversePropertyName so that _applyRelationships: can
+    propagate inverse relationships automatically.
+*/
+- (void)testParseContentsXMLRelationships_inversePropertyNameIsSet
+{
+    if (typeof DOMParser === "undefined")
+        return;
+
+    var xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            + '<model type="com.apple.IDECoreDataModeler.DataModel">'
+            + '  <entity name="Person" representedClassName="Person" syncable="YES">'
+            + '    <relationship name="addresses" optional="YES" toMany="YES" deletionRule="Cascade"'
+            + '                  destinationEntity="Address" inverseName="person" inverseEntity="Address"/>'
+            + '  </entity>'
+            + '  <entity name="Address" representedClassName="Address" syncable="YES">'
+            + '    <relationship name="person" optional="YES" maxCount="1" deletionRule="Nullify"'
+            + '                  destinationEntity="Person" inverseName="addresses" inverseEntity="Person"/>'
+            + '  </entity>'
+            + '</model>';
+
+    var model  = [CPManagedObjectModel _parseContentsXML:xml],
+        person = [model entityWithName:@"Person"],
+        addr   = [model entityWithName:@"Address"];
+
+    var addressesRel = [[person relationshipsByName] objectForKey:@"addresses"];
+    [self assert:@"person"
+          equals:[addressesRel inversePropertyName]
+         message:@"addresses.inversePropertyName should be 'person'"];
+
+    var personRel = [[addr relationshipsByName] objectForKey:@"person"];
+    [self assert:@"addresses"
+          equals:[personRel inversePropertyName]
+         message:@"person.inversePropertyName should be 'addresses'"];
+}
+
 - (void)testParseContentsXMLOptionalFlag
 {
     if (typeof DOMParser === "undefined")

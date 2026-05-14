@@ -299,6 +299,13 @@
                                    optional:optional
                                  deleteRule:deleteRule
                                 destination:destination];
+
+            var inverseName = relEl.getAttribute("inverseName");
+            if (inverseName)
+            {
+                var rel = [[entity relationshipsByName] objectForKey:relName];
+                [rel setInversePropertyName:inverseName];
+            }
         }
     }
 

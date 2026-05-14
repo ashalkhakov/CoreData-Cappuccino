@@ -585,6 +585,109 @@
          message:@"Order.expenses should contain exactly one entry after inverse propagation"];
 }
 
+/*!
+    proposeForOrder scenario: the server returns a temp-ID draft invoice whose
+    "order" relationship points to an existing, already-registered order.  The
+    order is NOT in allMaterialized (it came from an earlier presentOrder fetch),
+    so the inverse-propagation path must find it via the context lookup and add
+    the draft invoice to order._data["invoices"].
+*/
+- (void)testApplyRelationships_toOne_propagatesInverseToMany_targetInContextNotInAllMaterialized
+{
+    // ---- Build a two-entity model: Order ←→ Invoice ----
+    var model         = [[CPManagedObjectModel alloc] init],
+        orderEntity   = [[CPEntityDescription alloc] init],
+        invoiceEntity = [[CPEntityDescription alloc] init];
+
+    [orderEntity   setName:@"Order"];
+    [invoiceEntity setName:@"Invoice"];
+
+    // Order.invoices  (to-many, inverse = "order")
+    [orderEntity addRelationshipWithName:@"invoices"
+                                  toMany:YES
+                                optional:YES
+                              deleteRule:0
+                             destination:@"Invoice"];
+    var invoicesRel = [[orderEntity relationshipsByName] objectForKey:@"invoices"];
+    [invoicesRel setInversePropertyName:@"order"];
+
+    // Invoice.order  (to-one, inverse = "invoices")
+    [invoiceEntity addRelationshipWithName:@"order"
+                                    toMany:NO
+                                  optional:YES
+                                deleteRule:0
+                               destination:@"Order"];
+    var orderRel = [[invoiceEntity relationshipsByName] objectForKey:@"order"];
+    [orderRel setInversePropertyName:@"invoices"];
+
+    [model addEntity:orderEntity];
+    [model addEntity:invoiceEntity];
+
+    // ---- Store + coordinator (model-only coordinator, no store needed) ----
+    var storeConfig = [CPDictionary dictionaryWithObject:@"http://localhost/OrdersAPI"
+                                                  forKey:CPHTTPStoreBaseURL];
+    var store       = [[CPHTTPStore alloc] initWithStoreID:@"proposeTest" configuration:storeConfig];
+    var coordinator = [[CPPersistentStoreCoordinator alloc] initWithManagedObjectModel:model];
+    [store setStoreCoordinator:coordinator];
+
+    // ---- Context: model-only coordinator so context.model works; store is nil ----
+    var context = [[CPManagedObjectContext alloc] initWithPersistentStoreCoordinator:coordinator];
+
+    var kOrderID  = 660;
+    var orderObj  = [orderEntity createObject];
+    var orderGID  = @"Order|orderID=" + kOrderID + @";";
+    var orderID   = [[CPManagedObjectID alloc] initWithEntity:orderEntity
+                                                     globalID:orderGID
+                                                  isTemporary:NO];
+    [orderID setPersistentStore:store];
+    [orderObj setObjectID:orderID];
+    [orderObj setFault:NO];
+    // Register the order in the context, simulating it having been fetched earlier
+    // (e.g. via a presentOrder: named fetch).
+    [context insertObject:orderObj];
+
+    // ---- Simulate the proposeForOrder response: temp invoice ----
+    var invoiceObj = [invoiceEntity createObject];
+    var invoiceID  = [[CPManagedObjectID alloc] initWithEntity:invoiceEntity
+                                                      globalID:@"temp:invoice-0"
+                                                   isTemporary:YES];
+    [invoiceID setPersistentStore:store];
+    [invoiceObj setObjectID:invoiceID];
+    [invoiceObj setFault:NO];
+
+    // allMaterialized contains ONLY the invoice; the order is absent (not in this fetch)
+    var allMaterialized = [CPMutableDictionary dictionaryWithObjectsAndKeys:
+                               invoiceObj, @"temp:invoice-0"];
+
+    // The response relationship for the invoice:
+    //   relationships: { order: { entity: "Order", pk: { orderID: 660 } } }
+    var relationships = {
+        order: { entity: "Order", pk: { orderID: kOrderID } }
+    };
+
+    [store _applyRelationships:relationships
+                      toObject:invoiceObj
+               allMaterialized:allMaterialized
+                       context:context];
+
+    // invoice._data["order"] must point to the order
+    var orderVal = [[invoiceObj data] objectForKey:@"order"];
+    [self assertNotNull:orderVal
+                message:@"invoice._data['order'] must be non-nil after _applyRelationships:"];
+    [self assert:orderGID
+          equals:[orderVal globalID]
+         message:@"invoice._data['order'] globalID must match the pre-registered order"];
+
+    // Inverse: order._data["invoices"] must contain the draft invoice's objectID
+    var invoicesSet = [[orderObj data] objectForKey:@"invoices"];
+    [self assertNotNull:invoicesSet
+                message:@"order._data['invoices'] must be non-nil after inverse propagation"];
+    [self assert:1 equals:[invoicesSet count]
+         message:@"order._data['invoices'] must contain exactly one entry (the draft invoice)"];
+    [self assertTrue:[invoicesSet containsObject:invoiceID]
+              message:@"order._data['invoices'] must contain the draft invoice's objectID"];
+}
+
 
 // ---------------------------------------------------------------------------
 // CPHTTPStore – obtainPermanentIDsForObjects:error:
