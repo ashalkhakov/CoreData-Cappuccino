@@ -125,13 +125,13 @@
       inManagedObjectContext:(CPManagedObjectContext)aContext
                       error:(@ref)error
 {
-    var entity = [aFetchRequest entity],
-        all    = [aContext registeredObjects],
-        result = [[CPMutableSet alloc] init],
-        e      = [all objectEnumerator],
+    var entity            = [aFetchRequest entity],
+        registeredObjects = [aContext registeredObjects],
+        result            = [[CPMutableSet alloc] init],
+        enumerator        = [registeredObjects objectEnumerator],
         obj;
 
-    while ((obj = [e nextObject]))
+    while ((obj = [enumerator nextObject]))
     {
         if (entity === nil || [[obj entity] isEqual:entity])
             [result addObject:obj];
