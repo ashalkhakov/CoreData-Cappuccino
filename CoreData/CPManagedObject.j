@@ -383,7 +383,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
         var foreignRelationship = [self relationshipWithDestination:[localRelationship destination]];
 
 //        CPLog.info([[self objectID] stringRepresentation]);
-        var myObjectID = [[_context objectRegisteredForID:[self objectID]] objectID];
+        var myObjectID = [self objectID];
 
 
         if(myObjectID != nil)
