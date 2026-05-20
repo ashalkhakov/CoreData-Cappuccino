@@ -66,13 +66,13 @@
     return [self initWithStoreID:aStoreID url:""];
 }
 
-- (void)saveAll:(CPSet) objects error:({CPError}) error
+- (void)saveAll:(CPSet) objects error:(@ref) error
 {
 }
 
 - (CPSet)           loadAll:(CPDictionary)properties
      inManagedObjectContext:(CPManagedObjectContext)aContext
-                      error:({CPError}) error
+                      error:(@ref) error
 {
     return [CPSet new];
 }
@@ -81,7 +81,7 @@
                     inserted:(CPSet) insertedObjects
                      deleted:(CPSet) deletedObjects
       inManagedObjectContext:(CPManagedObjectContext) aContext
-                       error:({CPError}) error
+                       error:(@ref) error
 {
     var resultSet = [[CPMutableSet alloc] init];
     [resultSet unionSet:updatedObjects];

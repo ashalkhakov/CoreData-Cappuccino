@@ -1,10 +1,8 @@
-
 @import <OJUnit/OJTestCase.j>
 
 @import "CoreData.j"
 
-FILE = require("file");
-
+var path = require("path");
 
 @implementation CPManagedObjectModelJSONSchemaTest : OJTestCase
 {
@@ -21,10 +19,10 @@ FILE = require("file");
 
 -(void)testInitWithSchemaFromURL
 {
-    var urlBase = FILE.join(FILE.dirname(module.path), "data");
+    var urlBase = path.join(path.dirname(__filename), "data");
     var schemas = [[CPMutableDictionary alloc] init];
-    [schemas setObject:FILE.join(urlBase, "schema1.json") forKey:"Application"];
-    [schemas setObject:FILE.join(urlBase, "schema2.json") forKey:"Contract"];
+    [schemas setObject:path.join(urlBase, "schema1.json") forKey:"Application"];
+    [schemas setObject:path.join(urlBase, "schema2.json") forKey:"Contract"];
     var model = [CPManagedObjectModel modelWithJSONSchemaURLs:schemas
                                                         named:"schema?"];
     [self assertNotNull:model];
@@ -48,9 +46,9 @@ FILE = require("file");
 
 -(void)testSubschema
 {
-    var urlBase = FILE.join(FILE.dirname(module.path), "data");
+    var urlBase = path.join(path.dirname(__filename), "data");
     var schemas = [[CPMutableDictionary alloc] init];
-    [schemas setObject:FILE.join(urlBase, "schema1.json") forKey:"Application"];
+    [schemas setObject:path.join(urlBase, "schema1.json") forKey:"Application"];
     var model = [CPManagedObjectModel modelWithJSONSchemaURLs:schemas
                                                         named:"schema?"];
     [self assertNotNull:model];
@@ -71,4 +69,3 @@ FILE = require("file");
 }
 
 @end
-

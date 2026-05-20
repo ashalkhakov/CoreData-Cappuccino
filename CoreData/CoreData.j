@@ -6,11 +6,10 @@
 
 @import <Foundation/Foundation.j>
 
-@import "CPError.j"
-@import "CPReference.j"
-
 @import "CPPersistentStore.j"
 @import "CPPersistentStoreType.j"
+@import "CPPersistentStoreRequest.j"
+@import "CPPersistentStoreResult.j"
 @import "CPPersistentStoreCoordinator.j"
 @import "CPManagedObjectContext.j"
 
@@ -23,6 +22,8 @@
 @import "CPFetchedPropertyDescription.j"
 @import "CPFetchRequest.j"
 @import "CPFetchRequestTemplates.j"
+@import "CPAsynchronousFetchRequest.j"
+@import "CPAsynchronousFetchResult.j"
 
 @import "CPCoreDataCategories.j"
 @import "CPCoreDataJSONSchema.j"
@@ -44,3 +45,9 @@
 @import "CPWOStore.j"
 @import "CPWOStoreType.j"
 
+//HTTP incremental store (OrdersAPI cdFetch / cdSave)
+@import "CPHTTPStoreType.j"
+@import "CPHTTPPredicateEncoder.j"
+@import "CPHTTPStore.j"
+
+@import "CPFetchedResultsController.j"

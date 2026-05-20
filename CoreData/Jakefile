@@ -28,87 +28,189 @@
  * 
  */
 
-var ENV = require("system").env,
-    FILE = require("file"),
-    OS = require("os"),
-    JAKE = require("jake"),
-    task = JAKE.task,
-    FileList = JAKE.FileList,
-    CLEAN = require("jake/clean").CLEAN,
-    stream = require("narwhal/term").stream,
-    framework = require("objective-j/jake").framework,
-    configuration = ENV["CONFIG"] || ENV["CONFIGURATION"] || ENV["c"] || "Release";
+//===========================================================
+//  DO NOT REMOVE
+//===========================================================
 
-framework ("CoreData", function(task)
+const env = process.env;
+const path = require("path");
+
+//===========================================================
+//  USER CONFIGURABLE VARIABLES
+//===========================================================
+
+/*
+    The directory in which the project will be built. By default
+    it is built in $CAPP_BUILD if that is defined, otherwise
+    in a "Build" directory within the project directory.
+*/
+
+const buildDir = path.resolve(env["BUILD_PATH"] || env["CAPP_BUILD"] || "Build");
+
+/*
+    The list of directories containing Objective-J source
+    that should be compiled by jake. The main framework
+    directory is always checked for Objective-J source,
+    you only need to edit this if you have source in
+    subdirectories. Do NOT include a leading ortrailing slash
+    in the directory name.
+
+    Example:
+
+    const sourceDirs = [
+            "Core",
+            "Modules",
+            "Modules/Foo",
+            "Modules/Bar"
+        ];
+*/
+
+const sourceDirs = [
+    ];
+
+/*
+    The path to where to install the framework
+*/
+
+const packageFrameworksPath = path.join("~", "Developer", "Frameworks");
+
+//===========================================================
+//  AUTOMATICALLY GENERATED
+//
+//  Do not edit! (unless you know what you are doing)
+//===========================================================
+
+const fs = require("fs");
+const childProcess = require("child_process");
+
+const stream = ObjectiveJ.term.stream;
+const utilsFile = ObjectiveJ.utils.file;
+const jake = JAKE;
+
+const CLEAN = JAKE.CLEAN_AND_CLOBBER.CLEAN;
+const CLOBBER = JAKE.CLEAN_AND_CLOBBER.CLOBBER;
+
+const FileList = jake.FileList;
+const filedir = jake.filedir;
+const task = jake.task;
+
+const framework = CAPPUCCINO.Jake.frameworktask.framework;
+
+const configuration = env["CONFIG"] || env["CONFIGURATION"] || env["c"] || "Debug";
+const productName = "CoreData";
+
+const buildPath = path.join(buildDir, productName + ".build");
+const debugPackagePath = path.join(packageFrameworksPath, "Debug", productName);
+const releasePackagePath = path.join(packageFrameworksPath, productName);
+
+const frameworkTask = framework (productName, function(frameworkTask)
 {
-    task.setBuildIntermediatesPath(FILE.join("Build", "CoreData.build", configuration));
-    task.setBuildPath(FILE.join("Build", configuration));
+    frameworkTask.setBuildIntermediatesPath(path.join(buildPath, configuration));
+    frameworkTask.setBuildPath(path.join(buildDir, configuration));
 
-    task.setProductName("CoreData");
-    task.setIdentifier("com.rbartolome.CoreData");
-    task.setVersion("0.1");
-    task.setAuthor("Raphael Bartolome");
-    task.setEmail("raphael.bartolome@gmail.com");
-    task.setSummary("A CoreData implementation in Objective-J for Cappuccino");
-    task.setSources(new FileList("**/*.j").exclude('Build/**/*', 'Tests/**/*', 'documentation/**/*'));
-    task.setResources(new FileList("Resources/**/*"));
-    task.setFlattensSources(true);
-    task.setInfoPlistPath("Info.plist");
+    frameworkTask.setProductName(productName);
+    frameworkTask.setIdentifier("com.rbartolome.CoreData");
+    frameworkTask.setVersion("0.1");
+    frameworkTask.setAuthor("Raphael Bartolome");
+    frameworkTask.setEmail("raphael.bartolome@gmail.com");
+    frameworkTask.setSummary("A CoreData implementation in Objective-J for Cappuccino");
 
-    if (configuration === "Debug")
-        task.setCompilerFlags("-DDEBUG -g");
-    else
-        task.setCompilerFlags("-O");
+    var includes = sourceDirs.map(function(dir) { 
+        return dir + "/*.j"; 
+    });
+
+    const fileList = new FileList();
+
+    includes.unshift("*.j");
+    fileList.include(includes);
+    frameworkTask.setSources(fileList);
+    frameworkTask.setResources(new FileList("Resources/**/*"));
+    frameworkTask.setFlattensSources(true);
+    frameworkTask.setInfoPlistPath("Info.plist");
+    frameworkTask.setLicense(BundleTask.License.MIT);
+
+    if (configuration === "Debug") {
+        frameworkTask.setCompilerFlags("-DDEBUG -g -S --inline-msg-send");
+    } else {
+        frameworkTask.setCompilerFlags("-O2");
+    }
 });
 
-task ("default", ["CoreData"]);
+task("test", function()
+{
+    var tests = new FileList('Tests/*Test.j');
+    var cmd = ["ojtest"].concat(tests.items());
+    var cmdString = cmd.map(utilsFile.enquote).join(" ");
 
-task ("build", ["default"]);
+    try
+    {
+        childProcess.execSync(cmdString, { stdio: "inherit" });
+    }
+    catch (e)
+    {
+        if (e.stdout) process.stdout.write(e.stdout);
+        if (e.stderr) process.stderr.write(e.stderr);
+        process.exit(e.status);
+    }
+});
 
 task ("debug", function()
 {
-    ENV["CONFIGURATION"] = "Debug";
-    JAKE.subjake(["."], "build", ENV);
+    env["CONFIGURATION"] = "Debug";
+    jake.subjake(["."], "build", env);
 });
 
 task ("release", function()
 {
-    ENV["CONFIGURATION"] = "Release";
-    JAKE.subjake(["."], "build", ENV);
+    env["CONFIGURATION"] = "Release";
+    jake.subjake(["."], "build", env);
 });
 
+task ("default", ["release"]);
 
-$BUILD_DIR = FILE.join("Build");
-$BUILD_CJS_COREDATA = FILE.join($BUILD_DIR, "CommonJS");
-$BUILD_COREDATA_DEBUG_FRAMEWORKS = FILE.join($BUILD_CJS_COREDATA, "Frameworks", "CoreData", "Debug");
-$BUILD_COREDATA_RELEASE_FRAMEWORKS = FILE.join($BUILD_CJS_COREDATA, "Frameworks", "CoreData");
+const frameworkCJS = path.join(buildDir, configuration, "CommonJS", "cappuccino", "Frameworks", productName);
 
-task ("package", ["release", "debug"], function()
+filedir (frameworkCJS, [productName], function()
 {
-    if (FILE.exists($BUILD_CJS_COREDATA))
-        rm_rf($BUILD_CJS_COREDATA);
-    FILE.mkdirs($BUILD_COREDATA_RELEASE_FRAMEWORKS);
-    cp_r(FILE.join($BUILD_DIR, "Release", "CoreData"), $BUILD_COREDATA_RELEASE_FRAMEWORKS);
-    FILE.mkdirs($BUILD_COREDATA_DEBUG_FRAMEWORKS);
-    cp_r(FILE.join($BUILD_DIR, "Debug", "CoreData"), $BUILD_COREDATA_DEBUG_FRAMEWORKS);
-    // copy package.json
-    FILE.copy(FILE.join("package.json"), FILE.join($BUILD_CJS_COREDATA, "package.json"));
-    // metadata for package.json
-    setPackageMetadata(FILE.join($BUILD_CJS_COREDATA, "package.json"));
-    stream.print("\0green(Package built at " + $BUILD_CJS_COREDATA + ".\0)");
+    if (fs.existsSync(frameworkCJS))
+        fs.rmSync(frameworkCJS, { recursive: true });
+
+    utilsFile.cp_r(frameworkTask.buildProductPath(), frameworkCJS);
 });
 
-task ("install", ["package", "release", "debug"], function()
+const esbuild = require("esbuild");
+
+task("copy-vendor", async function()
 {
-    // install into narwhal
-    if (OS.system(["tusk", "install", "--force", $BUILD_CJS_COREDATA]))
-    {
-        stream.print("\0red(Installation failed, possibly because you do not have permissions.\0)");
-        stream.print("\0red(Try re-running using '\0yellow(jake sudo-install\0)'.\0)");
-        OS.exit(1); //rake abort if ($? != 0)
-    }
+    if (!fs.existsSync("Resources"))
+        fs.mkdirSync("Resources");
+
+    await esbuild.build({
+        entryPoints: [require.resolve("jsv")],
+        bundle: true,           // inlines all require()s
+        format: "iife",         // self-contained, no module system needed
+        globalName: "JSV",      // exposes as window.JSV / global.JSV
+        outfile: path.join("Resources", "JSV.js"),
+        platform: "browser",
+    });
+
+    console.log("Bundled JSV.js to Resources/");
 });
 
+// Make the main build depend on vendor copy
+task("build", ["copy-vendor", productName, frameworkCJS]);
+
+task ("all", ["debug", "release"]);
+
+task ("install", ["debug", "release"], function()
+{
+    install("copy");
+});
+
+task ("install-symlinks", ["debug", "release"], function()
+{
+    install("symlink");
+});
 
 task ("docs", ["documentation"]);
 
@@ -150,82 +252,83 @@ task ("documentation", function()
 });
 
 
-task("test", function()
+task ("help", function()
 {
-    var tests = new FileList('Tests/**/*Test.j'),
-        cmd = ["ojtest"].concat(tests.items()),
-        code = OS.system(cmd.map(OS.enquote).join(" "));
-    if (code !== 0)
-        OS.exit(code);
+    const app = jake.application().name();
+
+    colorPrint("--------------------------------------------------------------------------", "bold+green");
+    colorPrint("CoreData - Framework", "bold+green");
+    colorPrint("--------------------------------------------------------------------------", "bold+green");
+
+    describeTask(app, "debug", "Builds a debug version at " + path.join(buildDir, "Debug", productName));
+    describeTask(app, "release", "Builds a release version at " + path.join(buildDir, "Release", productName));
+    describeTask(app, "all", "Builds a debug and release version");
+    describeTask(app, "install", "Builds a debug and release version, then installs in " + packageFrameworksPath);
+    describeTask(app, "install-symlinks", "Builds a debug and release version, then symlinks the built versions into " + packageFrameworksPath);
+    describeTask(app, "clean", "Removes the intermediate build files");
+    describeTask(app, "clobber", "Removes the intermediate build files and the installed frameworks");
+    describeTask(app, "test", "Runs all testcases at " + path.resolve("Test"));
+
+    colorPrint("--------------------------------------------------------------------------", "bold+green");
 });
 
+CLEAN.include(buildPath);
+CLOBBER.include(path.join(buildDir, "Debug", productName))
+    .include(path.join(buildDir, "Release", productName))
+    .include(debugPackagePath)
+    .include(releasePackagePath)
 
-executableExists = function(/*String*/ executableName)
+const install = function(action)
 {
-    var paths = ENV["PATH"].split(':');
-    for (var i = 0; i < paths.length; i++) {
-        var path = FILE.join(paths[i], executableName);
-        if (FILE.exists(path))
-            return path;
-    }
-    return null;
-}
-
-CLEAN.include(FILE.join("Build", "CoreData.build"));
-
-
-global.getCoreDataVersion = function() {
-    var versionFile = FILE.path(module.path).dirname().join("version.json");
-    return JSON.parse(versionFile.read({ charset : "UTF-8" })).version;
-}
-
-
-setPackageMetadata = function(packagePath) {
-    var pkg = JSON.parse(FILE.read(packagePath, { charset : "UTF-8" }));
-
-    var p = OS.popen(["git", "rev-parse", "--verify", "HEAD"]);
-    if (p.wait() === 0) {
-        var sha = p.stdout.read().split("\n")[0];
-        if (sha.length === 40)
-            pkg["coredata-revision"] = sha;
-    }
-
-    pkg["coredata-timestamp"] = new Date().getTime();
-    pkg["version"] = getCoreDataVersion();
-
-    stream.print("    Version:   \0purple(" + pkg["version"] + "\0)");
-    stream.print("    Revision:  \0purple(" + pkg["coredata-revision"] + "\0)");
-    stream.print("    Timestamp: \0purple(" + pkg["coredata-timestamp"] + "\0)");
-
-    FILE.write(packagePath, JSON.stringify(pkg, null, 4), { charset : "UTF-8" });
-}
-
-
-global.rm_rf = function(/*String*/ aFilename)
-{
-    try
+    ["Release", "Debug"].forEach(function(aConfig)
     {
-        FILE.rmtree(aFilename);
-    } catch (anException)
-    { }
-}
+        colorPrint((action === "symlink" ? "Symlinking " : "Copying ") + aConfig + "...", "cyan");
 
-global.cp_r = function(/*String*/ from, /*String*/ to)
+        const thePackageFrameworksPath = aConfig === "Debug" ? path.join(packageFrameworksPath, aConfig) : packageFrameworksPath;
+
+        if (fs.existsSync(thePackageFrameworksPath) && !fs.lstatSync(thePackageFrameworksPath).isDirectory())
+            childProcess.execSync(["mkdir", "-p", thePackageFrameworksPath].map(utilsFile.enquote).join(" "));
+        
+        var buildPath = path.resolve(path.join(buildDir, aConfig, productName)),
+            targetPath = path.join(thePackageFrameworksPath, productName);
+
+        if (action === "symlink")
+            directoryOp(["ln", "-sf", buildPath, targetPath]);
+        else
+            utilsFile.cp_r(buildPath, targetPath);
+    });
+};
+
+const directoryOp = function(cmd)
 {
-    if (FILE.exists(to))
-        rm_rf(to);
+    var targetPath = cmd[cmd.length - 1];
 
-    if (FILE.isDirectory(from))
-        FILE.copyTree(from, to);
-    else
+    if (fs.existsSync(targetPath) && fs.lstatSync(targetPath).isDirectory())
+        childProcess.execSync(["rm", "-rf", targetPath].map(utilsFile.enquote).join(" "));
+
+    childProcess.execSync(cmd.map(utilsFile.enquote).join(" "));
+};
+
+const describeTask = function(application, task, description)
+{
+    colorPrint("\n" + application + " " + task, "violet");
+    description.split("\n").forEach(function(line)
     {
-        try
-        {
-            FILE.copy(from, to);
-        } catch(e)
-        {
-            print(e + FILE.exists(from) + " " + FILE.exists(FILE.dirname(to)));
-        }
-    }
-}
+        stream.print("   " + line);
+    });
+};
 
+const colorPrint = function(message, color)
+{
+    var matches = color.match(/(bold(?: |\+))?(.+)/);
+
+    if (!matches)
+        return;
+
+    message = "\0" + matches[2] + "(" + message + "\0)";
+
+    if (matches[1])
+        message = "\0bold(" + message + "\0)";
+
+    stream.print(message);
+};

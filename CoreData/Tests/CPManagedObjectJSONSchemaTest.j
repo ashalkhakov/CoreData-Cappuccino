@@ -3,19 +3,18 @@
 
 @import "CoreData.j"
 
-FILE = require("file");
-
+var path = require("path");
 
 @implementation CPManagedObjectJSONSchemaTest : OJTestCase
 {
-    var model;
+    CPManagedObjectModel model;
 }
 
 -(void)setUp
 {
-    var urlBase = FILE.join(FILE.dirname(module.path), "data");
+    var urlBase = path.join(path.dirname(__filename), "data");
     var schemas = [[CPMutableDictionary alloc] init];
-    [schemas setObject:FILE.join(urlBase, "mo_schema1.json") forKey:"Type1"];
+    [schemas setObject:path.join(urlBase, "mo_schema1.json") forKey:"Type1"];
     model = [CPManagedObjectModel modelWithJSONSchemaURLs:schemas
                                                     named:"test"];
 }

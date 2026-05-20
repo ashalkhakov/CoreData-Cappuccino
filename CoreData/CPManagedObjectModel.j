@@ -16,6 +16,7 @@
 var EOMODEL_SUFFIX = "eomodeld";
 var COREDATAMODEL_SUFFIX = "xcdatamodel";
 var CPDCOREDATAMODEL_SUFFIX = "cpxcdatamodel";
+var COREDATAMODELD_SUFFIX = "xcdatamodeld";
 
 @implementation CPManagedObjectModel : CPObject
 {
@@ -43,6 +44,10 @@ var CPDCOREDATAMODEL_SUFFIX = "cpxcdatamodel";
         {
             [objectModel parseEOModel:modelURL];
         }
+        else if([aModelName hasSuffix:COREDATAMODELD_SUFFIX])
+        {
+            objectModel = [CPManagedObjectModel parseXCDataModelBundle:modelURL];
+        }
         else if([aModelName hasSuffix:COREDATAMODEL_SUFFIX]
                     || [aModelName hasSuffix:CPDCOREDATAMODEL_SUFFIX])
         {
@@ -51,6 +56,55 @@ var CPDCOREDATAMODEL_SUFFIX = "cpxcdatamodel";
     }
     CPLog.info("Data Model '" + [objectModel name] + "' loaded");
     return objectModel;
+}
+
+/*!
+    Asynchronously load a model by name from a bundle.
+
+    The delegate is notified when loading completes.  The delegate must
+    implement the CPXCDataModelLoader informal protocol:
+      - (void)managedObjectModelDidFinishLoading:(CPManagedObjectModel)model
+    and may optionally implement:
+      - (void)managedObjectModelDidFailToLoad:(CPString)modelPath
+
+    Supported formats: .xcdatamodel, .xcdatamodeld, .cpxcdatamodel.
+    Note: .eomodeld is not yet supported through the async path.
+
+    @param aModelName  Resource name including extension (e.g. "MyModel.xcdatamodel").
+    @param aBundle     Bundle to search; pass nil to use the main bundle.
+    @param aDelegate   Object receiving the completion callback.
+    @return The CPXCDataModelLoader driving the request (may be ignored).
+*/
++ (id)modelWithModelNamed:(CPString)aModelName
+                   bundle:(CPBundle)aBundle
+                 delegate:(id)aDelegate
+{
+    var modelURL = [[aBundle || [CPBundle mainBundle]] pathForResource:aModelName];
+    if (modelURL == nil)
+    {
+        CPLog.warn(@"CPManagedObjectModel: resource not found for model name '" + aModelName + "'");
+        if ([aDelegate respondsToSelector:@selector(managedObjectModelDidFailToLoad:)])
+            [aDelegate managedObjectModelDidFailToLoad:aModelName];
+        return nil;
+    }
+
+    if ([aModelName hasSuffix:COREDATAMODELD_SUFFIX])
+    {
+        return [CPManagedObjectModel parseXCDataModelBundleAsync:modelURL delegate:aDelegate];
+    }
+    else if (   [aModelName hasSuffix:COREDATAMODEL_SUFFIX]
+             || [aModelName hasSuffix:CPDCOREDATAMODEL_SUFFIX])
+    {
+        return [CPManagedObjectModel parseCoreDataModelAsync:modelURL delegate:aDelegate];
+    }
+    else
+    {
+        CPLog.warn(@"CPManagedObjectModel: async loading not supported for '"
+                   + aModelName + "'; use modelWithModelNamed:bundle: instead");
+        if ([aDelegate respondsToSelector:@selector(managedObjectModelDidFailToLoad:)])
+            [aDelegate managedObjectModelDidFailToLoad:aModelName];
+        return nil;
+    }
 }
 
 + (id) mergedModelFromBundles: (CPArray) bundles
@@ -92,6 +146,10 @@ var CPDCOREDATAMODEL_SUFFIX = "cpxcdatamodel";
 {
     var result = NO;
     if([aModelFile hasSuffix:EOMODEL_SUFFIX])
+    {
+        result = YES;
+    }
+    else if([aModelFile hasSuffix:COREDATAMODELD_SUFFIX])
     {
         result = YES;
     }

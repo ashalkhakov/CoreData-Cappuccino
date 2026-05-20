@@ -10,6 +10,9 @@
 @import "CPRelationshipDescription.j"
 @import "CPManagedObject.j"
 
+@class CPManagedObject;
+@class CPManagedObjectModel;
+
 @implementation CPEntityDescription : CPObject
 {
 	CPManagedObjectModel _model @accessors(property=model);
@@ -38,6 +41,11 @@
 + (CPManagedObject)insertNewObjectForEntityForName:(CPString)aEntityName inManagedObjectContext:(CPManagedObjectContext) aContext
 {
 	return [aContext insertNewObjectForEntityForName:aEntityName];
+}
+
++ (CPEntityDescription)entityWithName:(CPString)aName inManagedObjectContext:(CPManagedObjectContext)aContext
+{
+	return [[aContext model] entityWithName:aName];
 }
 
 - (CPManagedObject)createObject
@@ -164,7 +172,7 @@
 
 - (BOOL)acceptValue:(id) aValue forProperty:(CPString) aKey
 {
-	var theProperty = [[self propertiesByName] objectForKey:aKey]
+	var theProperty = [_propertiesByName objectForKey:aKey]
 	return [theProperty acceptValue:aValue];
 }
 

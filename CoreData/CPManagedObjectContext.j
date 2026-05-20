@@ -9,6 +9,10 @@
 @import "CPManagedObjectID.j"
 @import "CPManagedObjectModel.j"
 @import "CPPersistentStore.j"
+@import "CPPersistentStoreCoordinator.j"
+@import "CPPersistentStoreRequest.j"
+@import "CPAsynchronousFetchRequest.j"
+@import "CPAsynchronousFetchResult.j"
 
 /*
 
@@ -16,6 +20,8 @@
 @public
 - (CPArray) executeFetchRequest:(CPFetchRequest)aFetchRequest;
 - (CPArray) executeStoreFetchRequest:(CPFetchRequest)aFetchRequest;
+- (void) executeStoreFetchRequestAsync:(CPFetchRequest)aFetchRequest completionHandler:(Function)handler;
+- (void) saveChangesWithCompletionHandler:(Function)handler;
 
 @private
 - (CPSet) _executeLocalFetchRequest:(CPFetchRequest) aFetchRequest;
@@ -27,6 +33,7 @@
 - (BOOL) reset;
 - (void) _objectDidChange:(CPManagedObject) aObject;
 - (CPManagedObject) _registerObject:(CPManagedObject) object;
+- (CPManagedObject) _registerFetchedObject:(CPManagedObject) object;
 - (void) _unregisterObject:(CPManagedObject) object;
 - (void) _deleteObject: ({CPManagedObject}) aObject saveAfterDeletion:(BOOL) saveAfterDeletion;
 
@@ -42,6 +49,12 @@ CPManagedObjectContextDidSaveAllObjectsNotification = "CPManagedObjectContextDid
 CPDInsertedObjectsKey = "CPDInsertedObjectsKey";
 CPDUpdatedObjectsKey = "CPDUpdatedObjectsKey";
 CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
+
+// Error domain and user-info keys for validation failures.
+CPCoreDataErrorDomain          = @"CPCoreDataErrorDomain";
+CPDetailedErrorsKey            = @"CPDetailedErrors";
+CPValidationMultipleErrorsError = 1550;
+CPValidationMissingMandatoryPropertyError = 1570;
 
 
 @implementation CPManagedObjectContext : CPObject
@@ -117,15 +130,23 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     return nil;
 }
 
-// @TODO update methods to use _executeStoreFetchRequest
 - (CPManagedObject) updateObjectWithID:(CPManagedObjectID) aObjectID mergeChanges:(BOOL) mergeChanges
 {
+    // Try the local registry first
+    var existing = [self objectRegisteredForID:aObjectID];
+    if (existing !== nil)
+        return existing;
+
+    // Fire a fault fetch via the store if the object ID has a global ID
+    if ([aObjectID validatedGlobalID])
+        return [self _fetchObjectWithID:aObjectID];
+
     return nil;
 }
 
 // @TODO fetchLimit is missing
 - (CPArray) executeFetchRequest:(CPFetchRequest)aFetchRequest
-                          error:(CPError)anError
+                          error:(@ref)anError
 {
     var result = nil;
 
@@ -171,21 +192,182 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
             )
     {
         var transparent = [aFetchRequest transparentFetch];
+        var fetchEntity = [aFetchRequest entity];
         var objectEnum = [resultSet objectEnumerator];
         var objectFromResponse;
         while ((objectFromResponse = [objectEnum nextObject]))
         {
             if (transparent)
             {
-                [resultArray addObject:objectFromResponse];
+                if (fetchEntity === nil || [[objectFromResponse entity] isEqual:fetchEntity])
+                    [resultArray addObject:objectFromResponse];
             }
             else
             {
-                [resultArray addObject:[self _registerObject:objectFromResponse]];
+                var registered = [self _registerFetchedObject:objectFromResponse];
+                if (fetchEntity === nil || [[registered entity] isEqual:fetchEntity])
+                    [resultArray addObject:registered];
             }
         }
     }
     return resultArray;
+}
+
+/*!
+    Async counterpart of executeStoreFetchRequest:.
+
+    If the store implements executeFetchRequestAsync:inManagedObjectContext:completionHandler:,
+    uses that so the browser UI is not blocked.  Otherwise falls back to the
+    synchronous store fetch path (suitable for in-memory or other fast stores).
+
+    Fires CPManagedObjectContextDidLoadObjectsNotification when complete.
+
+    @param request  The fetch request.
+    @param handler  JS function(results CPArray, error CPError).
+                    results is a CPArray (empty on error).
+                    Pass nil if you only need the notification.
+*/
+- (void)executeStoreFetchRequestAsync:(CPFetchRequest)aFetchRequest
+                    completionHandler:(Function)handler
+{
+    var self_ = self;
+
+    if ([[self store] respondsToSelector:@selector(executeFetchRequestAsync:inManagedObjectContext:completionHandler:)])
+    {
+        [[self store] executeFetchRequestAsync:aFetchRequest
+                        inManagedObjectContext:self
+                             completionHandler:function(resultSet, error) {
+            var resultArray = [[CPMutableArray alloc] init];
+            if (resultSet !== nil && error === nil)
+            {
+                var transparent = [aFetchRequest transparentFetch],
+                    fetchEntity = [aFetchRequest entity],
+                    objectEnum  = [resultSet objectEnumerator],
+                    obj;
+                while ((obj = [objectEnum nextObject]))
+                {
+                    if (transparent)
+                    {
+                        if (fetchEntity === nil || [[obj entity] isEqual:fetchEntity])
+                            [resultArray addObject:obj];
+                    }
+                    else
+                    {
+                        var registered = [self_ _registerFetchedObject:obj];
+                        if (fetchEntity === nil || [[registered entity] isEqual:fetchEntity])
+                            [resultArray addObject:registered];
+                    }
+                }
+            }
+            [[CPNotificationCenter defaultCenter]
+                postNotificationName:CPManagedObjectContextDidLoadObjectsNotification
+                              object:self_
+                            userInfo:nil];
+            if (handler) handler(resultArray, error);
+        }];
+    }
+    else
+    {
+        // Sync fallback for stores that don't implement the async API
+        var resultArray = [self executeStoreFetchRequest:aFetchRequest];
+        [[CPNotificationCenter defaultCenter]
+            postNotificationName:CPManagedObjectContextDidLoadObjectsNotification
+                          object:self
+                        userInfo:nil];
+        if (handler) handler(resultArray || [], nil);
+    }
+}
+
+/*!
+    Schedule a block to run asynchronously on the context's queue.
+
+    Mirrors NSManagedObjectContext -perform:.
+
+    In the single-threaded browser environment the block is deferred to the
+    next run-loop turn via a zero-delay timer so that the calling stack has
+    fully unwound before the block executes.
+
+    @param block  A zero-argument JS function to execute.
+*/
+- (void)perform:(Function)block
+{
+    if (block)
+        window.setTimeout(block, 0);
+}
+
+/*!
+    Execute a block synchronously on the context's queue.
+
+    Mirrors NSManagedObjectContext -performAndWait:.
+
+    In the single-threaded browser environment this is equivalent to calling
+    the block immediately.
+
+    @param block  A zero-argument JS function to execute.
+*/
+- (void)performAndWait:(Function)block
+{
+    if (block)
+        block();
+}
+
+/*!
+    Execute a persistent-store request.
+
+    Mirrors NSManagedObjectContext -executeRequest:error:.
+
+    Supported request types:
+    - CPAsynchronousFetchRequestType: fires an async fetch and delivers the
+      result to the request's completionBlock.  Returns an empty
+      CPAsynchronousFetchResult immediately (finalResult will be nil until
+      the completion block is called).
+    - CPFetchRequestType: performs a synchronous fetch and returns a CPArray.
+    - CPSaveRequestType: performs a synchronous save and returns @(YES/NO).
+
+    @param request  A CPPersistentStoreRequest (or subclass) instance.
+    @param error    On return, if an error occurred this ref is set to a
+                    CPError describing the problem.
+    @return The result of the operation, or nil on failure.
+*/
+- (id)executeRequest:(CPPersistentStoreRequest)request
+               error:(@ref)error
+{
+    var type = [request requestType];
+
+    if (type === CPAsynchronousFetchRequestType)
+    {
+        var asyncRequest = request,
+            innerFetch   = [asyncRequest fetchRequest],
+            result       = [[CPAsynchronousFetchResult alloc] init];
+
+        [result setFetchRequest:asyncRequest];
+        [result setFinalResult:nil];
+
+        [self executeStoreFetchRequestAsync:innerFetch
+                          completionHandler:function(resultArray, fetchError) {
+            [result setFinalResult:(fetchError === nil ? resultArray : nil)];
+
+            var completionBlock = [asyncRequest completionBlock];
+            if (completionBlock)
+                completionBlock(result);
+        }];
+
+        return result;
+    }
+    else if (type === CPFetchRequestType)
+    {
+        return [self executeFetchRequest:request error:error];
+    }
+    else if (type === CPSaveRequestType)
+    {
+        var saveError = nil;
+        var success = [self saveChanges:@ref(saveError)];
+        if (error) @deref(error) = saveError;
+        return success;
+    }
+
+    CPLog.warn("CPManagedObjectContext -executeRequest:error: unrecognised requestType " + type);
+    return nil;
 }
 
 - (CPSet) _executeLocalFetchRequest:(CPFetchRequest) aFetchRequest
@@ -228,11 +410,14 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
                                                    error:error];
         if (resultSet != nil && [resultSet count] > 0 && error == nil)
         {
+            var fetchEntity = [aFetchRequest entity];
             var objectEnum = [resultSet objectEnumerator];
             var objectFromResponse;
             while((objectFromResponse = [objectEnum nextObject]))
             {
-                [resultArray addObject:[self _registerObject:objectFromResponse]];
+                var registered = [self _registerFetchedObject:objectFromResponse];
+                if (fetchEntity === nil || [[registered entity] isEqual:fetchEntity])
+                    [resultArray addObject:registered];
             }
         }
     }
@@ -291,7 +476,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 
         while(objectFromResponse = [resultEnumerator nextObject])
         {
-            [self _registerObject:objectFromResponse];
+            [self _registerFetchedObject:objectFromResponse];
         }
     }
     [[CPNotificationCenter defaultCenter] postNotificationName:CPManagedObjectContextDidLoadObjectsNotification
@@ -309,35 +494,43 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 
     TODO: better error handling
 
-    @param error should be nil or a CPReference, will receive a CPError object on error.
+    @param error should be nil or a @ref, will receive a CPError object on error.
 */
-- (BOOL)saveChanges:(CPError)error
+- (BOOL)saveChanges:(@ref)error
 {
     if (![self hasChanges])
     {
-        return YES
+        // Even with no store-level changes there may be FRC pending changes
+        // (e.g. deletes of objects without a persistent globalID).  Always
+        // post DidSave so observers such as CPFetchedResultsController have a
+        // chance to flush those pending changes.
+        [[CPNotificationCenter defaultCenter]
+            postNotificationName: CPManagedObjectContextDidSaveNotification
+                          object: self
+                        userInfo: nil];
+        return YES;
     }
     var result = NO;
     if ([[self store] respondsToSelector:@selector(
                           saveObjectsUpdated:inserted:deleted:inManagedObjectContext:error:)]
        )
     {
-        var saveError = [CPReference new],
+        var saveError = nil,
             updatedObjects = [self updatedObjects],
             insertedObjects = [self insertedObjects],
             deletedObjects = [self deletedObjects];
         var modifiedObjects = [self _saveObjectsUpdated:updatedObjects
                                                inserted:insertedObjects
                                                 deleted:deletedObjects
-                                                  error:saveError];
-        if ([saveError isNil])
+                                                  error:@ref(saveError)];
+        if (saveError == nil)
         {
             result = [self reset];
         }
-        else if (error && [error isNil])
+        else if (error && @deref(error) == nil)
         {
             // return the error to the caller
-            [error setObject:[saveError object]];
+            @deref(error) = saveError;
         }
         [[CPNotificationCenter defaultCenter]
             postNotificationName: CPManagedObjectContextDidSaveNotification
@@ -355,6 +548,108 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     return result;
 }
 
+/*!
+    Async counterpart of saveChanges:.
+
+    If the store implements
+      saveObjectsUpdated:inserted:deleted:inManagedObjectContext:completionHandler:
+    uses that so the browser UI is not blocked.  Otherwise falls back to the
+    synchronous save path.
+
+    Fires CPManagedObjectContextDidSaveNotification and
+    CPManagedObjectContextDidSaveChangedObjectsNotification on success.
+
+    @param handler  JS function(success BOOL, error CPError).
+                    Pass nil if you only need the notification.
+*/
+- (void)saveChangesWithCompletionHandler:(Function)handler
+{
+    if (![self hasChanges])
+    {
+        if (handler) handler(YES, nil);
+        return;
+    }
+
+    if (![[self store] respondsToSelector:@selector(saveObjectsUpdated:inserted:deleted:inManagedObjectContext:completionHandler:)])
+    {
+        // Sync fallback for stores that don't implement the async API
+        var syncError = nil;
+        var result = [self saveChanges:@ref(syncError)];
+        if (handler) handler(result, syncError);
+        return;
+    }
+
+    var self_            = self,
+        updatedObjects   = [self updatedObjects],
+        insertedObjects  = [self insertedObjects],
+        deletedObjects   = [self deletedObjects],
+        allSavingObjects = [[CPMutableSet alloc] init];
+
+    [allSavingObjects unionSet:updatedObjects];
+    [allSavingObjects unionSet:insertedObjects];
+    [allSavingObjects unionSet:deletedObjects];
+
+    var validationError = nil;
+    // Promote temporary IDs to permanent placeholders before validation so
+    // that server-assigned mandatory attributes (nil at this point) do not
+    // block the save.  The real IDs are filled in from idMap after the store
+    // responds.
+    if ([[self store] respondsToSelector:@selector(obtainPermanentIDsForObjects:error:)])
+        [[self store] obtainPermanentIDsForObjects:insertedObjects error:nil];
+
+    if (![self _validateUpdatedObject:updatedObjects
+                      insertedObjects:insertedObjects
+                                error:@ref(validationError)])
+    {
+        if (handler) handler(NO, validationError);
+        return;
+    }
+
+    [[allSavingObjects allObjects] makeObjectsPerformSelector:@selector(willSave)];
+
+    [[self store] saveObjectsUpdated:updatedObjects
+                            inserted:insertedObjects
+                             deleted:deletedObjects
+              inManagedObjectContext:self
+                   completionHandler:function(resultSet, saveError) {
+        if (saveError !== nil)
+        {
+            if (handler) handler(NO, saveError);
+            return;
+        }
+
+        // Apply ID remapping from server
+        if (resultSet && [resultSet count] > 0)
+        {
+            var objectsEnum = [resultSet objectEnumerator],
+                obj;
+            while ((obj = [objectsEnum nextObject]))
+            {
+                var registeredObject = [self_ objectRegisteredForID:[obj objectID]];
+                if (registeredObject !== nil)
+                {
+                    [[registeredObject objectID] setGlobalID:[[obj objectID] globalID]];
+                    [[registeredObject objectID] setIsTemporary:[[obj objectID] isTemporary]];
+                }
+            }
+        }
+
+        [[allSavingObjects allObjects] makeObjectsPerformSelector:@selector(didSave)];
+        [self_ reset];
+
+        [[CPNotificationCenter defaultCenter]
+            postNotificationName:CPManagedObjectContextDidSaveNotification
+                          object:self_
+                        userInfo:nil];
+        [[CPNotificationCenter defaultCenter]
+            postNotificationName:CPManagedObjectContextDidSaveChangedObjectsNotification
+                          object:self_
+                        userInfo:nil];
+
+        if (handler) handler(YES, nil);
+    }];
+}
+
 
 /*!
     Save a single object from the context.
@@ -363,7 +658,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     insert/update or delete.
 */
 - (BOOL)saveObject:(CPManagedObject)aObject
-             error:(CPError)error
+             error:(@ref)error
 {
     CPLog.debug(  "context:" + self
                 + " saveObject: reg " + [_registeredObjects count]
@@ -371,25 +666,29 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
                 + ", ins " + [_insertedObjectIDs count]
                 + ", del "  + [_deletedObjects count]);
     var result = NO,
-        saveError = [CPReference new],
-        updatedObjects = [CPSet new],
-        insertedObjects = [CPSet new],
-        deletedObjects = [CPSet new],
+        saveError = nil,
+        updatedObjects = [CPMutableSet new],
+        insertedObjects = [CPMutableSet new],
+        deletedObjects = [CPMutableSet new],
         obj;
     obj = [self _insertedObjectWithID:[aObject objectID]];
-    if (obj)
+    if (obj) {
         [insertedObjects addObject:obj];
+    }
     obj = [self _updatedObjectWithID:[aObject objectID]];
-    if (obj)
+    if (obj) {
         [updatedObjects addObject:obj];
+    }
     obj = [self _deletedObjectWithID:[aObject objectID]];
-    if (obj)
+    if (obj) {
         [deletedObjects addObject:obj];
+    }
     var modifiedObjects = [self _saveObjectsUpdated:updatedObjects
                                            inserted:insertedObjects
                                             deleted:deletedObjects
-                                              error:saveError];
-    if ([saveError isNil])
+                                              error:@ref(saveError)];
+
+    if (saveError == nil)
     {
         // update the state of the object in the context
         [_updatedObjectIDs removeObject:[aObject objectID]];
@@ -397,10 +696,10 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
         [_deletedObjects removeObject:[aObject objectID]];
         result = YES;
     }
-    else if (error && [error isNil])
+    else if (error && @deref(error) == nil)
     {
         // return the error to the caller
-        [error setObject:[saveError object]];
+        @deref(error) = saveError;
     }
     return result;
 }
@@ -409,16 +708,37 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 -(CPSet)_saveObjectsUpdated:(CPSet)updatedObjects
                    inserted:(CPSet)insertedObjects
                     deleted:(CPSet)deletedObjects
-                      error:(CPError)error
+                      error:(@ref)error
 {
-    var saveError = [CPReference new];
-    [self _validateUpdatedObject:updatedObjects
-                 insertedObjects:insertedObjects];
+    // Promote temporary IDs to permanent placeholders before validation so
+    // that server-assigned mandatory attributes (nil at this point) do not
+    // block the save.  The real IDs are filled in from idMap after the store
+    // responds.
+    if ([[self store] respondsToSelector:@selector(obtainPermanentIDsForObjects:error:)])
+        [[self store] obtainPermanentIDsForObjects:insertedObjects error:nil];
+
+    var saveError = nil;
+    if (![self _validateUpdatedObject:updatedObjects
+                      insertedObjects:insertedObjects
+                                error:@ref(saveError)])
+    {
+        if (error && @deref(error) == nil)
+            @deref(error) = saveError;
+        return nil;
+    }
+
+    // Notify all objects that are about to be saved
+    var allSavingObjects = [[CPMutableSet alloc] init];
+    [allSavingObjects unionSet:updatedObjects];
+    [allSavingObjects unionSet:insertedObjects];
+    [allSavingObjects unionSet:deletedObjects];
+    [[allSavingObjects allObjects] makeObjectsPerformSelector:@selector(willSave)];
+
     var resultSet = [[self store] saveObjectsUpdated:updatedObjects
                                             inserted:insertedObjects
                                              deleted:deletedObjects
                               inManagedObjectContext:self
-                                               error:saveError];
+                                               error:@ref(saveError)];
     if (resultSet && [resultSet count] > 0)
     {
         var objectsEnum = [resultSet objectEnumerator];
@@ -433,16 +753,51 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
             }
         }
     }
-    if (![saveError isNil] && error && [error isNil])
+    if (saveError != nil && error && @deref(error) == nil)
     {
         // return the error to the caller
-        [error setObject:[saveError object]];
+        @deref(error) = saveError;
+    }
+    else
+    {
+        // Save succeeded — notify all participating objects
+        [[allSavingObjects allObjects] makeObjectsPerformSelector:@selector(didSave)];
+
+        // Keep the coordinator's row cache consistent with the committed state.
+        var coordinator = [self storeCoordinator];
+        if (coordinator !== nil)
+        {
+            // Evict deleted objects so stale data is never served from the cache.
+            var de = [deletedObjects objectEnumerator],
+                delObj;
+            while ((delObj = [de nextObject]))
+            {
+                var delGlobalID = [[delObj objectID] globalID];
+                if (delGlobalID !== nil)
+                    [coordinator invalidateRowDataForGlobalID:delGlobalID];
+            }
+
+            // Refresh cache entries for objects that were saved with new data
+            // (both updated and newly inserted objects whose global ID is now known).
+            var ue = [[CPMutableSet alloc] init];
+            [ue unionSet:updatedObjects];
+            [ue unionSet:insertedObjects];
+            var ueEnum = [ue objectEnumerator],
+                saveObj;
+            while ((saveObj = [ueEnum nextObject]))
+            {
+                var savedGlobalID = [[saveObj objectID] globalID];
+                if (savedGlobalID !== nil)
+                    [coordinator cacheRowData:[saveObj data] forGlobalID:savedGlobalID];
+            }
+        }
     }
     return resultSet;
 }
 
-- (void) _validateUpdatedObject:({CPSet})updated
-                insertedObjects:({CPSet})inserted
+- (BOOL) _validateUpdatedObject:(CPSet)updated
+                insertedObjects:(CPSet)inserted
+                          error:(@ref)error
 {
     var unionSet = [[CPMutableSet alloc] init];
     [unionSet unionSet:updated];
@@ -450,26 +805,29 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 
     var enumerator = [unionSet objectEnumerator];
     var aObject;
+    var failedObjects = [[CPMutableArray alloc] init];
 
     while((aObject = [enumerator nextObject]))
     {
         if(![aObject validateForUpdate])
-        {
-            [updated removeObject:aObject];
-            [inserted removeObject:aObject];
-
-            var objectEnum = [unionSet objectEnumerator];
-            var object;
-            while((object = [objectEnum nextObject]))
-            {
-                if([object _containsObject:[aObject objectID]])
-                {
-                    [updated removeObject:object];
-                    [inserted removeObject:object];
-                }
-            }
-        }
+            [failedObjects addObject:aObject];
     }
+
+    if ([failedObjects count] > 0)
+    {
+        if (error && @deref(error) == nil)
+        {
+            var ui = [[CPMutableDictionary alloc] init];
+            [ui setObject:@"One or more objects failed validation and the save was aborted."
+                   forKey:CPLocalizedDescriptionKey];
+            [ui setObject:failedObjects forKey:CPDetailedErrorsKey];
+            @deref(error) = [CPError errorWithDomain:CPCoreDataErrorDomain
+                                               code:CPValidationMultipleErrorsError
+                                           userInfo:ui];
+        }
+        return NO;
+    }
+    return YES;
 }
 
 /*
@@ -506,14 +864,14 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
         }
         if (localID || globalID)
         {
-            var e = [_registeredObjects objectEnumerator],
-                id,
-                object;
+            var e = [_registeredObjects objectEnumerator];
+            var oid = nil;
+            var object = nil;
             while (object = [e nextObject])
             {
-                id = [object objectID];
-                if (   (localID && [id isEqualToLocalID:aObjectID] == YES)
-                    || (globalID && [id isEqualToGlobalID:aObjectID] == YES)
+                oid = [object objectID];
+                if (   (localID && [oid isEqualToLocalID:aObjectID] == YES)
+                    || (globalID && [oid isEqualToGlobalID:aObjectID] == YES)
                    )
                 {
                     return object;
@@ -524,6 +882,87 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     return object;
 }
 
+/*!
+    Returns the object for the given object ID.
+
+    If the object is already registered in the context it is returned directly.
+    Otherwise a fault object (isFault == YES) is created, registered, and
+    returned.  The fault will be fully populated the first time any of its
+    properties are accessed.
+
+    This mirrors NSManagedObjectContext -objectWithID:.
+*/
+- (CPManagedObject) objectWithID:(CPManagedObjectID)aObjectID
+{
+    if (aObjectID === nil || aObjectID === null)
+        return nil;
+
+    var existing = [self objectRegisteredForID:aObjectID];
+    if (existing !== nil)
+    {
+        // If the registered object is still a fault but row-cache data is
+        // available, fulfill it in-place right now so callers get a live object.
+        if ([existing isFault] && [aObjectID validatedGlobalID])
+        {
+            var coordinator = [self storeCoordinator];
+            var cachedData = (coordinator !== nil)
+                                ? [coordinator cachedRowDataForGlobalID:[aObjectID globalID]]
+                                : nil;
+            if (cachedData !== nil)
+            {
+                [existing _setData:[cachedData mutableCopy]];
+                [existing setFault:NO];
+                [existing awakeFromFetch];
+            }
+        }
+        return existing;
+    }
+
+    // Check the coordinator row cache before creating a fault.
+    // If data is present we can return a fully-resolved object immediately,
+    // matching Apple CoreData's behaviour for objectWithID: when the row is
+    // already known to the coordinator.
+    if ([aObjectID validatedGlobalID])
+    {
+        var coordinator = [self storeCoordinator];
+        var cachedData = (coordinator !== nil)
+                            ? [coordinator cachedRowDataForGlobalID:[aObjectID globalID]]
+                            : nil;
+        if (cachedData !== nil)
+        {
+            var entity = [aObjectID entity];
+            if (entity !== nil)
+            {
+                var localEntity = [[self model] entityWithName:[entity name]];
+                if (localEntity !== nil)
+                {
+                    var cachedObj = [localEntity createObject];
+                    [cachedObj setObjectID:aObjectID];
+                    [cachedObj _setData:[cachedData mutableCopy]];
+                    [cachedObj setFault:NO];
+                    if (![aObjectID validatedLocalID])
+                        [aObjectID setLocalID:[CPManagedObjectID createLocalID]];
+                    return [self _registerFetchedObject:cachedObj];
+                }
+            }
+        }
+    }
+
+    // Create a fault: a registered stub whose data has not yet been loaded.
+    var entity = [aObjectID entity];
+    if (entity === nil)
+        return nil;
+
+    var faultObject = [entity createObject];
+    [faultObject setObjectID:aObjectID];
+    [faultObject setFault:YES];
+    if (![aObjectID validatedLocalID])
+        [aObjectID setLocalID:[CPManagedObjectID createLocalID]];
+    [_registeredObjects addObject:faultObject];
+    [faultObject _applyToContext:self];
+    return faultObject;
+}
+
 
 - (CPManagedObject) _fetchObjectWithID:(CPManagedObjectID) aObjectID
 {
@@ -532,6 +971,29 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
     {
         if([self _deletedObjectWithID:aObjectID] == nil && [aObjectID validatedGlobalID])
         {
+            // --- Check coordinator row cache first ---
+            // Apple's CoreData keeps a shared row-cache at the coordinator level
+            // so that faults can be resolved from data already held in memory by
+            // any context sharing the same coordinator, without a network round-trip.
+            var coordinator = [self storeCoordinator];
+            var cachedData = (coordinator !== nil)
+                                ? [coordinator cachedRowDataForGlobalID:[aObjectID globalID]]
+                                : nil;
+            if (cachedData !== nil)
+            {
+                // Hydrate a new managed object from the cached attribute snapshot.
+                var localEntity = [[self model] entityWithName:[[aObjectID entity] name]];
+                if (localEntity !== nil)
+                {
+                    var cachedObj = [localEntity createObject];
+                    [cachedObj setObjectID:aObjectID];
+                    [cachedObj _setData:[cachedData mutableCopy]];
+                    [cachedObj setFault:NO];
+                    return [self _registerFetchedObject:cachedObj];
+                }
+            }
+
+            // --- Row cache miss: fall back to network fetch ---
             var setWithObjIDs = [[CPMutableSet alloc] init];
             [setWithObjIDs addObject:aObjectID];
 
@@ -551,7 +1013,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
                 while((objectFromResponse = [objectEnum nextObject]))
                 {
                     [[objectFromResponse objectID] setLocalID: [aObjectID localID]];
-                    objectFromResponse = [self _registerObject:objectFromResponse];
+                    objectFromResponse = [self _registerFetchedObject:objectFromResponse];
                     aObjectID = [objectFromResponse objectID];
                     return objectFromResponse;
                 }
@@ -640,25 +1102,31 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 /*
  *    Insert and delete registered objects
  */
-- (void) insertObject: ({CPManagedObject}) aObject
+- (void) insertObject: (CPManagedObject) aObject
 {
     if([aObject objectID] == nil)
     {
         [aObject setObjectID:[[CPManagedObjectID alloc] initWithEntity:[aObject entity] globalID:nil isTemporary:YES]];
     }
+
     var deletedObject = [self _deletedObjectWithID: [aObject objectID]];
     if (deletedObject != nil)
     {
         [self _registerObject: aObject];
         [_deletedObjects removeObject: aObject];
         [_insertedObjectIDs addObject: [aObject objectID]];
-
     }
     else
     {
+        // isNew must be checked BEFORE _registerObject: adds the object to
+        // _registeredObjects; checking after would always yield NO.
+        var isNew = ([self objectRegisteredForID:[aObject objectID]] == nil);
         [self _registerObject: aObject];
         [_insertedObjectIDs addObject: [aObject objectID]];
+        if (isNew)
+            [aObject awakeFromInsert];
     }
+
     [aObject _applyToContext: self];
 
     var userInfo = [CPDictionary dictionaryWithObject: [CPSet setWithObject: aObject]
@@ -670,16 +1138,17 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 }
 
 
-- (void) deleteObject: ({CPManagedObject}) aObject
+- (void) deleteObject: (CPManagedObject) aObject
 {
     [self _deleteObject:aObject saveAfterDeletion:YES];
 }
 
 
-- (void) _deleteObject: ({CPManagedObject}) aObject saveAfterDeletion:(BOOL) saveAfterDeletion
+- (void) _deleteObject: (CPManagedObject) aObject saveAfterDeletion:(BOOL) saveAfterDeletion
 {
     if ([self objectRegisteredForID: [aObject objectID]] != nil)
     {
+        [aObject prepareForDeletion];
         if ([aObject _solveRelationshipsWithDeleteRules] == YES)
         {
             var needToSave = NO;
@@ -716,7 +1185,7 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
 
 - (void) deleteObjectWithID: (CPManagedObjectID) aObjectId
 {
-    var aObject = [self objectRegisteredForID: objectID];
+    var aObject = [self objectRegisteredForID: aObjectId];
     if (aObject != nil)
     {
         [self deleteObject:aObject];
@@ -767,6 +1236,9 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
             //update regobject with object
             [regObject _updateWithObject: aObject];
             [regObject _applyToContext:self];
+            // The incoming object has its data; the registered object (which may
+            // have been a fault) is now fully populated.
+            [regObject setFault:NO];
             aObject = regObject;
         }
         var userInfo = [CPDictionary dictionaryWithObject:[CPSet setWithObject:aObject]
@@ -787,6 +1259,23 @@ CPDDeletedObjectsKey = "CPDDeletedObjectsKey";
         [aObject _applyToContext:self];
     }
     return aObject;
+}
+
+/*!
+    Register an object that arrived from a persistent store fetch.
+
+    This method calls _registerObject: and then fires awakeFromFetch on the
+    object if it was not already present in the context.  Use this from all
+    code paths where objects are received from the store rather than created
+    locally (loadAll:, executeStoreFetchRequest:, _fetchObjectWithID:).
+*/
+- (CPManagedObject) _registerFetchedObject: (CPManagedObject) aObject
+{
+    var wasRegistered = ([self objectRegisteredForID:[aObject objectID]] != nil);
+    var registered = [self _registerObject:aObject];
+    if (!wasRegistered)
+        [registered awakeFromFetch];
+    return registered;
 }
 
 

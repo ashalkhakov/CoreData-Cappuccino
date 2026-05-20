@@ -1,6 +1,5 @@
 
 @import <OJUnit/OJTestCase.j>
-@import "../CPError.j"
 
 
 @implementation CPErrorTest : OJTestCase
@@ -23,7 +22,7 @@
     var error = [CPError errorWithDomain:"Domain"
                                     code:42
                                 userInfo:userInfo];
-    [self assert:"Error Domain=Domain Code=42 UserInfo={\n} CPError (Domain error 42)"
+    [self assert:"Error Domain=Domain Code=42 \"The operation couldn’t be completed. (error 42)\" UserInfo={\n}"
           equals:[error description]];
 }
 
@@ -33,7 +32,7 @@
     var error = [CPError errorWithDomain:"Domain"
                                     code:42
                                 userInfo:userInfo];
-    [self assert:"CPError (Domain error 42)"
+    [self assert:"The operation couldn’t be completed. (error 42)"
           equals:[error localizedDescription]];
     [userInfo setValue:"The localized Description"
                 forKey:CPLocalizedDescriptionKey];

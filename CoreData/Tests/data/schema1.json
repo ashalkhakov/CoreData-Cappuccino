@@ -36,7 +36,7 @@
               "type":"string",
               "description":"The name of the object for display purposes."
           }
-      },
+      }
     },
     "periods":{
       "description":"Contract periods",
@@ -56,7 +56,7 @@
             "type":"string",
             "description":"The date when this period ends.",
             "format":"sl:rfc3339"
-          },
+          }
         },
         "title":"Contract Period"
       },

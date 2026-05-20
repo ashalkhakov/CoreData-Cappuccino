@@ -6,15 +6,18 @@
 
 @import <Foundation/Foundation.j>
 
+@class CPEntityDescription;
+@class CPManagedObjectContext;
+@class CPPersistentStore;
 
 @implementation CPManagedObjectID : CPObject
 {
-    CPEntityDescription _entity @accessors(property=entity);
+    CPEntityDescription _entity;
     CPManagedObjectContext _context @accessors(property=context);
-    CPPersistentStore _store @accessors(property=store);
+    CPPersistentStore _persistentStore;
     id _globalID @accessors(property=globalID);
     id _localID @accessors(setter=setLocalID:);
-    BOOL _isTemporary @accessors(property=isTemporary);
+    BOOL _isTemporary;
 }
 
 + (id)createLocalID
@@ -43,9 +46,56 @@
     return self;
 }
 
-- (CPEntityDescription) entity
+// Public read-only getter
+- (CPEntityDescription)entity
 {
     return _entity;
+}
+
+// Internal setter (not part of the public API)
+- (void)setEntity:(CPEntityDescription)entity
+{
+    _entity = entity;
+}
+
+// Public read-only getter
+- (CPPersistentStore)persistentStore
+{
+    return _persistentStore;
+}
+
+// Internal setter (not part of the public API)
+- (void)setPersistentStore:(CPPersistentStore)store
+{
+    _persistentStore = store;
+}
+
+// Public read-only getter
+- (BOOL)isTemporary
+{
+    return _isTemporary;
+}
+
+// Internal setter (not part of the public API)
+- (void)setIsTemporary:(BOOL)isTemporary
+{
+    _isTemporary = isTemporary;
+}
+
+// Returns a URI that provides an archivable reference to the object in the store.
+// Permanent IDs: x-coredata://storeID/EntityName/pGlobalID
+// Temporary IDs: x-coredata:///EntityName/tLocalID
+- (CPURL)uriRepresentation
+{
+    var entityName = (_entity != nil) ? encodeURIComponent([_entity name]) : @"";
+    if (_isTemporary)
+    {
+        var localPart = encodeURIComponent([self localID]);
+        return [CPURL URLWithString:@"x-coredata:///" + entityName + @"/t" + localPart];
+    }
+    var storeID    = (_persistentStore != nil) ? encodeURIComponent([_persistentStore storeID]) : @"",
+        globalPart = encodeURIComponent(_globalID || @"");
+    return [CPURL URLWithString:@"x-coredata://" + storeID + @"/" + entityName + @"/p" + globalPart];
 }
 
 - (id)localID
@@ -87,15 +137,25 @@
     return YES;
 }
 
-//TODO check if this method is necessary
 - (BOOL) isEqual: (CPManagedObjectID) otherID
 {
-    if(![[self globalID] isEqual:[otherID globalID]] &&
-        [self isEqualToLocalID: otherID])
-    {
-      return NO;
-    }
-    return YES;
+    if (otherID == nil)
+        return NO;
+
+    if ([self validatedGlobalID] && [otherID validatedGlobalID])
+        return [self isEqualToGlobalID:otherID];
+
+    if ([self validatedLocalID] && [otherID validatedLocalID])
+        return [self isEqualToLocalID:otherID];
+
+    return NO;
+}
+
+- (unsigned) hash
+{
+    if ([self validatedGlobalID])
+        return [[self globalID] hash];
+    return [[self localID] hash];
 }
 
 - (void)updateWithObjectID:(CPManagedObjectID)newObjectID

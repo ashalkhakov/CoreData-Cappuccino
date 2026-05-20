@@ -3,6 +3,7 @@
 
 @import "Tools.j"
 
+var path = require("path");
 
 @implementation CPManagedJSONObjectTest : OJTestCase
 {
@@ -13,9 +14,9 @@
 
 -(void)setUp
 {
-    var urlBase = FILE.join(FILE.dirname(module.path), "data");
+    var urlBase = path.join(path.dirname(__filename), "data");
     var schemas = [[CPMutableDictionary alloc] init];
-    [schemas setObject:FILE.join(urlBase, "mo_schema1.json") forKey:"Type1"];
+    [schemas setObject:path.join(urlBase, "mo_schema1.json") forKey:"Type1"];
     model = [CPManagedObjectModel modelWithJSONSchemaURLs:schemas
                                                     named:"testschema"];
     context = [Tools testContextWithModel:model storeType:nil];
@@ -80,7 +81,7 @@
                                              withContext:context];
     [self assert:"{\"string1\":\"default for string1\",\"enum1\":\"tomorrow\",\"object1\":{\"attr1\":\"default for attr1\",\"transform\":\"untransformed\"},\"array1\":[]}"
           equals:[[CPData dataWithJSONObject:[obj JSONObject]] rawString]];
-};
+}
 
 -(void)testSerializeAsNList
 {

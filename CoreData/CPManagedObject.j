@@ -8,6 +8,11 @@
 @import "CPEntityDescription.j"
 @import "CPManagedObjectContext.j"
 @import "CPManagedObjectID.j"
+@import "CPRelationshipDescription.j"
+
+@class CPRelationshipDescription;
+@class CPEntityDescription;
+@class CPManagedObjectContext;
 
 /*
 **** HEADER ****
@@ -49,14 +54,17 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 
     CPMutableDictionary _data @accessors(getter=data);
     CPMutableDictionary _changedData @accessors(getter=changedData);
+
+    CPMutableSet _loadedRelationships;
 }
 
 -(id)init
 {
     if (self = [super init])
     {
-        _propertiesData = [[CPMutableDictionary alloc] init];
+        _data = [[CPMutableDictionary alloc] init];
         _changedData = [[CPMutableDictionary alloc] init];
+        _loadedRelationships = [[CPMutableSet alloc] init];
         _isUpdated = NO;
         _isDeleted = NO;
         _isFault = NO;
@@ -82,6 +90,37 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
         [_context insertObject:self];
     }
     return self;
+}
+
+/*!
+    Returns the managed object context with which the receiver is registered.
+    This is the CoreData-compatible alias for the \c context property.
+*/
+- (CPManagedObjectContext)managedObjectContext
+{
+    return _context;
+}
+
+/*!
+    Record that a relationship was loaded from the persistent store.
+    Called by CPHTTPStore after materialising a relationship from a server
+    response.  Only relationships recorded here are included in the save
+    payload for updated objects, preventing a partial inverse to-many set
+    from overwriting the authoritative server-side collection.
+*/
+- (void)noteRelationshipLoaded:(CPString)key
+{
+    [_loadedRelationships addObject:key];
+}
+
+/*!
+    Returns YES if the relationship named \a key was loaded from the
+    persistent store (i.e. it was present in a server response and
+    applied via -noteRelationshipLoaded:).
+*/
+- (BOOL)isRelationshipLoaded:(CPString)key
+{
+    return [_loadedRelationships containsObject:key];
 }
 
 /*
@@ -124,8 +163,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
             }
             else if([value isKindOfClass:[CPArray class]])
             {
-                //WATCH only for savety remove later
-                CPLog.fatal("isKindOfClass Array **fail**");
+                CPLog.warn("storedValueForKey: to-many relationship '" + aKey + "' stored as CPArray; converting to CPMutableSet");
                 values = [CPMutableSet setWithArray: value];
             }
         }
@@ -135,7 +173,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
             var resultSet  = [[CPSet alloc] init];
             var valuesEnumerator = [values objectEnumerator];
             var aValue;
-            var i = 0;
+
             while((aValue = [valuesEnumerator nextObject]))
             {
                 if(aValue != nil)
@@ -143,19 +181,21 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
                     var regObject = [_context objectRegisteredForID: aValue];
                     if(regObject == nil)
                     {
-                        //if the regObject is nil we remove it
+                        // Try to fetch the object from the store.
                         regObject = [_context updateObjectWithID:aValue mergeChanges:YES];
                         if(regObject != nil)
                         {
+                            // The store returned a refreshed object with a (possibly
+                            // different) permanent ID — update the stored reference.
                             [values removeObject:aValue];
                             [values addObject:[regObject objectID]];
                             [self _setChangedObject:values forKey:aKey];
                         }
-                        else
-                        {
-                            [values removeObject:aValue];
-                            [self _setChangedObject:values forKey:aKey];
-                        }
+                        // When the object is still unresolvable (e.g. it was registered
+                        // via setContext: only and _registeredObjects hasn't been updated
+                        // yet), keep the ID in _data so it can be resolved later.
+                        // Do NOT evict it here — a permanent removal would cause the
+                        // relationship to lose track of the object permanently.
                     }
                     if(regObject != nil)
                         [resultSet addObject: regObject];
@@ -170,15 +210,13 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
             if(regObject == nil && [_data objectForKey:aKey] != nil)
             {
                 regObject = [_context updateObjectWithID:[_data objectForKey:aKey] mergeChanges:YES];
-                //if the regObject is nil we remove it
                 if(regObject != nil)
                 {
+                    // The store returned a refreshed permanent ID — update the reference.
                     [self _setChangedObject:[regObject objectID] forKey:aKey];
                 }
-                else
-                {
-                    [self _setChangedObject:nil forKey:aKey];
-                }
+                // When the object is still unresolvable, keep the stored ID so it
+                // can be resolved once the object is fully registered.
             }
             [self didAccessValueForKey:aKey];
             return regObject;
@@ -305,10 +343,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
             {
                 propertyObject = [[CPMutableSet alloc] init];
             }
-            else
-            {
-                [propertyObject addObject: tmpObjectID];
-            }
+            [propertyObject addObject: tmpObjectID];
 
             // if([propertyObject containsObject:tmpObjectID])
             //     return;
@@ -348,7 +383,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
         var foreignRelationship = [self relationshipWithDestination:[localRelationship destination]];
 
 //        CPLog.info([[self objectID] stringRepresentation]);
-        var myObjectID = [[_context objectRegisteredForID:[self objectID]] objectID];
+        var myObjectID = [self objectID];
 
 
         if(myObjectID != nil)
@@ -366,7 +401,10 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
         //Take care that the new object is under control
         if([_context objectRegisteredForID:tmpObjectID] == nil)
         {
-            [_context insertObject:tmpObjectID];
+            if ([object isKindOfClass:[CPManagedObject class]])
+                [_context insertObject:object];
+            else
+                CPLog.warn(@"addObject:toBothSideOfRelationship: object with ID %@ is not registered in the context and cannot be inserted (only a CPManagedObjectID was provided)", tmpObjectID);
         }
         [self didChangeValueForKey:propertyName];
     }
@@ -386,7 +424,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 - (CPArray)toManyRelationshipsKey
 {
     var result = [[CPMutableArray alloc] init];
-    var relationshipDict = [entity relationshipsByName];
+    var relationshipDict = [_entity relationshipsByName];
     var allKeys = [relationshipDict allKeys];
     var i = 0;
 
@@ -405,7 +443,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 - (CPArray)toOneRelationshipsKey
 {
     var result = [[CPMutableArray alloc] init];
-    var relationshipDict = [entity relationshipsByName];
+    var relationshipDict = [_entity relationshipsByName];
     var allKeys = [relationshipDict allKeys];
     var i = 0;
 
@@ -439,8 +477,26 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 /*
  *    Detect changes and notify the context
  */
+
+/*!
+    Fire the receiver's fault if it has not yet been fulfilled.
+
+    This is called automatically before every property access.  If the object
+    is a fault AND has a global ID, the context is asked to resolve it — first
+    from the coordinator's row cache, and on a cache miss from the persistent
+    store.  After resolution the fault flag is cleared.
+*/
 - (void)willAccessValueForKey:(CPString)aKey
 {
+    if (_isFault && _context !== nil && _objectID !== nil && [_objectID validatedGlobalID])
+    {
+        // _fetchObjectWithID: either finds data in the coordinator's row cache
+        // and merges it into self (via _registerObject: -> _updateWithObject:),
+        // or fires a network request.  Either way, after this call self._data
+        // has been populated.
+        [_context _fetchObjectWithID:_objectID];
+        _isFault = NO;
+    }
 }
 
 - (void)didAccessValueForKey:(CPString)aKey
@@ -631,11 +687,75 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
     return [self _validateForChanges];
 }
 
+
+/*
+ * Lifecycle hooks
+ *
+ * These methods are called by CPManagedObjectContext at the appropriate
+ * points in an object's lifecycle.  The default implementations are no-ops;
+ * subclasses should override them without calling super (matching Apple's
+ * NSManagedObject semantics).
+ */
+
+/*!
+    Called the first time the receiver is inserted into a managed object
+    context (i.e. after initWithEntity:inManagedObjectContext: completes).
+    Subclasses can override this to set default property values.
+*/
+- (void)awakeFromInsert
+{
+}
+
+/*!
+    Called after the receiver has been fetched from a persistent store and
+    populated with its persisted values.  Subclasses can override this to
+    perform any post-fetch initialisation.
+*/
+- (void)awakeFromFetch
+{
+}
+
+/*!
+    Called on every dirty object just before the context sends a save request
+    to the persistent store.  Subclasses can override this to make any last-
+    minute changes before the save.
+*/
+- (void)willSave
+{
+}
+
+/*!
+    Called on every object that was part of a successful save operation after
+    the save completes.  Subclasses can use this to trigger UI updates or
+    post-save bookkeeping.
+*/
+- (void)didSave
+{
+}
+
+/*!
+    Called when the object is scheduled for deletion, before relationships are
+    resolved and before the deletion is sent to the store.  Subclasses can
+    override this to clean up derived data or unlink external resources.
+*/
+- (void)prepareForDeletion
+{
+}
+
 - (BOOL)_validateForChanges
 {
     var result = YES,
         allKeys = [_data allKeys],
         relationships = [_entity relationshipsByName];
+
+    // For existing objects fetched from the server (non-temporary global ID),
+    // Apple's CoreData only re-validates properties that were explicitly changed
+    // by the application.  Properties that were never populated from the server
+    // (nil in _data and absent from _changedData) must not block a save for an
+    // otherwise valid change on the same object.  New inserts (temporary ID) are
+    // always fully validated so all mandatory attributes must be supplied.
+    var isNewObject = (_objectID === nil || [_objectID isTemporary]);
+
     for(var i=0; i < [allKeys count]; i++)
     {
         var property = [allKeys objectAtIndex:i];
@@ -645,6 +765,9 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
                 && ![_changedData objectForKey:property]
                )
             {
+                if (!isNewObject)
+                    continue; // existing object: skip nil check for unchanged attribute
+
                 CPLog.warn(@"Object '%s' is not complete because property '%s' is missing",
                             [[self entity] name],
                             property
@@ -661,6 +784,9 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
                    && ![_changedData objectForKey:property]
                   )
                 {
+                    if (!isNewObject)
+                        continue; // existing object: skip nil check for unchanged relationship
+
                     CPLog.warn(@"Object '%s' is not complete because relation '%s' is missing",
                                 [[self entity] name],
                                 property
@@ -727,7 +853,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 */
 - (void)_setChangedObject:(id) aObject forKey:(CPString) aKey
 {
-    var transformed = [[self entity] reverseTransformValue:aObject forProperty:aKey];
+    var transformed = [_entity reverseTransformValue:aObject forProperty:aKey];
     [_changedData setObject:transformed forKey:aKey];
     [_data setObject:transformed forKey:aKey];
 }
@@ -746,7 +872,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
     {
         _objectID = [[CPManagedObjectID alloc] initWithEntity:_entity globalID:nil isTemporary:YES];
         [_objectID setContext:context];
-        [_objectID setStore:[context store]];
+        [_objectID setPersistentStore:[context store]];
     }
 }
 
@@ -757,10 +883,17 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 
 - (BOOL)_containsKey:(CPString) aKey
 {
+    // A key is "contained" if it is a known property of the entity (regardless
+    // of whether _data has been populated yet — fault objects have an empty
+    // _data dictionary).  Routing all entity-property accesses through
+    // storedValueForKey: ensures that willAccessValueForKey: is always called,
+    // which fires pending faults before the value is read.
+    if (_entity !== nil && [[_entity propertyNames] containsObject:aKey])
+        return YES;
     return [[_data allKeys] containsObject: aKey];
 }
 
-- (void)_setData:(CPDictionary) aDictionary
+- (void)_setData:(CPMutableDictionary) aDictionary
 {
     _data = aDictionary;
     var e = [[_entity properties] objectEnumerator];
@@ -773,7 +906,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
     }
 }
 
-- (void)_setChangedData:(CPDictionary) aDictionary
+- (void)_setChangedData:(CPMutableDictionary) aDictionary
 {
     _changedData = aDictionary;
 }
@@ -786,8 +919,18 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
     while ((property = [e nextObject]) != nil)
     {
         var propName = [property name];
-        //@TODO nil is no longer supported as object
-        var value = [property defaultValue];
+        var value;
+        if ([property isKindOfClass:[CPRelationshipDescription class]])
+        {
+            // relationships have no defaultValue; use nil for to-one and an
+            // empty set for to-many
+            value = [property isToMany] ? [[CPMutableSet alloc] init] : nil;
+        }
+        else
+        {
+            //@TODO nil is no longer supported as object
+            value = [property defaultValue];
+        }
         //value = [[self entity] transformValue:value
         //                          forProperty:propName];
         [_data setObject:value forKey:propName];
@@ -839,7 +982,7 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 - (Class)relationshipDestinationClassType:(CPString) key
 {
     var result = nil;
-    var att = [[_entity relationshipsByName] objectForKey:aKey];
+    var att = [[_entity relationshipsByName] objectForKey:key];
 
     if(att != nil)
     {
@@ -850,9 +993,9 @@ CPManagedObjectUnexpectedValueTypeForProperty = "CPManagedObjectUnexpectedValueT
 }
 
 
-- (CPRelationshipDescription)relationshipWithDestination:(CPEntityDescription)aEntity
+- (CPRelationshipDescription)relationshipWithDestination:(CPEntityDescription)entity
 {
-    var relationshipDict = [aEntity relationshipsByName];
+    var relationshipDict = [entity relationshipsByName];
     var allKeys = [relationshipDict allKeys];
     var i = 0;
 
